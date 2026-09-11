@@ -1,0 +1,31 @@
+paths:
+  data_root: data/raw/chest_xray
+  processed_data_dir: data/processed
+  reports_dir: reports
+  figures_dir: reports/figures
+  metrics_dir: reports/metrics
+  model_dir: models
+  best_model_path: models/best_model.pt
+data:
+  image_size: 256
+  batch_size: 24
+  num_workers: 2
+  pin_memory: true
+  use_stratified_validation_split: true
+  validation_split_fraction: 0.15
+training:
+  epochs: 8
+  learning_rate: 0.0003
+  weight_decay: 0.0001
+  seed: 42
+  device: cuda
+  use_weighted_loss: true
+  use_weighted_sampler: false
+  fine_tune_epochs: 12
+  fine_tune_learning_rate: 0.00001
+  early_stopping_patience: 5
+model:
+  name: resnet18
+  pretrained: true
+  freeze_backbone: true
+  num_classes: 2
