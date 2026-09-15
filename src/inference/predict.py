@@ -19,6 +19,7 @@ from src.training.models import build_model
 PNEUMONIA_LABEL_ID = LABEL_TO_ID["PNEUMONIA"]
 NORMAL_LABEL_ID = LABEL_TO_ID["NORMAL"]
 DEFAULT_IMAGE_SIZE = 224
+DEFAULT_PNEUMONIA_THRESHOLD = 0.70
 
 
 class InferenceError(RuntimeError):
@@ -243,10 +244,14 @@ def predict_image(model: LoadedModel, image: Tensor) -> dict[str, str | float]:
         )
         raise InferenceError(message)
 
-    predicted_label_id = int(torch.argmax(probabilities).item())
-    predicted_label = ID_TO_LABEL[predicted_label_id]
     pneumonia_probability = float(probabilities[PNEUMONIA_LABEL_ID].item())
     normal_probability = float(probabilities[NORMAL_LABEL_ID].item())
+    predicted_label_id = (
+        PNEUMONIA_LABEL_ID
+        if pneumonia_probability >= DEFAULT_PNEUMONIA_THRESHOLD
+        else NORMAL_LABEL_ID
+    )
+    predicted_label = ID_TO_LABEL[predicted_label_id]
     confidence = max(normal_probability, pneumonia_probability)
     result = PredictionResult(
         predicted_label=predicted_label,

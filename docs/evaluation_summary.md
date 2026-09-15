@@ -11,6 +11,26 @@
 - F1-score: `0.8971`
 - ROC-AUC: `0.9599`
 
+## Karar Eşiği Optimizasyonu
+
+Varsayılan `0.50` sınıflandırma eşiği, validation setinde tarandı. Recall değerinin
+`0.98` üzerinde tutulduğu seçenekler arasında en yüksek özgüllüğü veren eşik
+`0.70` olarak seçildi ve inference/API akışında varsayılan yapıldı.
+
+| Metrik | Eşik 0.50 | Eşik 0.70 |
+|---|---:|---:|
+| Accuracy | 0.8574 | **0.8830** |
+| Precision | 0.8168 | 0.8468 |
+| Recall | 0.9949 | **0.9923** |
+| F1-score | 0.8971 | **0.9138** |
+| Özgüllük | 0.6282 | **0.7009** |
+| False positive | 87 | **70** |
+| False negative | 2 | 3 |
+
+Eşik `0.70` validation setinde seçilmiş, ardından test setinde tek seferlik
+doğrulanmıştır. Bu ayar false positive sayısını azaltırken zatürre recall değerini
+`%99` seviyesinde korur.
+
 ## En Güçlü Metrikler
 
 - `recall`: `0.9949`
