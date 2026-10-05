@@ -71,7 +71,7 @@ def test_predict_endpoint_rejects_invalid_file(tmp_path: Path) -> None:
         )
 
     assert response.status_code == 415
-    assert "Desteklenmeyen görüntü formatı" in response.json()["detail"]
+    assert "Unsupported image format" in response.json()["detail"]
 
 
 def test_predict_endpoint_rejects_missing_file_field(tmp_path: Path) -> None:
@@ -82,7 +82,7 @@ def test_predict_endpoint_rejects_missing_file_field(tmp_path: Path) -> None:
         response = client.post("/predict")
 
     assert response.status_code == 400
-    assert "multipart `file` alanı zorunludur" in response.json()["detail"]
+    assert "the multipart `file` field is required" in response.json()["detail"]
 
 
 def test_predict_endpoint_rejects_corrupted_image_bytes(tmp_path: Path) -> None:
@@ -96,7 +96,7 @@ def test_predict_endpoint_rejects_corrupted_image_bytes(tmp_path: Path) -> None:
         )
 
     assert response.status_code == 400
-    assert "Görüntü işlenemedi" in response.json()["detail"]
+    assert "Could not process the image" in response.json()["detail"]
 
 
 def _create_test_checkpoint(tmp_path: Path) -> Path:

@@ -128,7 +128,7 @@ def calculate_class_weights(dataset: ChestXRayDataset) -> Tensor:
     for label_id in sorted(class_counts):
         sample_count = class_counts[label_id]
         if sample_count <= 0:
-            message = f"Class weight hesaplanamadı; label_id={label_id} için örnek yok."
+            message = f"Could not calculate class weights; no samples for label_id={label_id}."
             raise ValueError(message)
         weights.append(total_count / (class_count * sample_count))
 
@@ -191,7 +191,7 @@ def require_manifest_files(processed_data_dir: Path) -> None:
     if missing_paths:
         formatted_paths = "\n".join(f"- {path}" for path in missing_paths)
         message = (
-            "Manifest dosyaları bulunamadı. Önce şu komutu çalıştırın: "
+            "Manifest files were not found. Run this command first: "
             "`python -m src.data.standardize_dataset --config configs/config.yaml`\n"
             f"Eksik dosyalar:\n{formatted_paths}"
         )

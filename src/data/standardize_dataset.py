@@ -138,8 +138,8 @@ def split_class_paths(
 
     if len(class_paths) < 2:
         message = (
-            "Stratified validation split için her sınıfta en az 2 eğitim görüntüsü gerekir. "
-            f"label='{label}' için {len(class_paths)} görüntü bulundu."
+            "A stratified validation split requires at least 2 training images per class. "
+            f"Found {len(class_paths)} images for label='{label}'."
         )
         raise DatasetStandardizationError(message)
 
@@ -195,7 +195,7 @@ def write_manifest_csv(output_path: Path, rows: list[dict[str, str | int]]) -> N
         OSError: If the file cannot be written.
     """
     if not rows:
-        message = f"Manifest üretilemedi; görüntü satırı yok: {output_path.name}"
+        message = f"Could not generate a manifest; no image rows: {output_path.name}"
         raise DatasetStandardizationError(message)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -278,6 +278,25 @@ def standardize_dataset(config: ProjectConfig) -> dict[str, Path]:
         DatasetStandardizationError: If manifests cannot be generated.
         OSError: If output files cannot be written.
     """
+    if config.data.use_group_disjoint_split:
+        from src.data.clean_split import prepare_clean_split
+
+        if config.data.validation_split_fraction != 0.2:
+            raise DatasetStandardizationError(
+                "Group-disjoint splitting uses a fixed 5-fold protocol; validation fraction must be 0.2"
+            )
+        prepare_clean_split(
+            config.paths.data_root, config.paths.processed_data_dir, config.data.split_seed
+        )
+        return {
+            **{
+                split: config.paths.processed_data_dir / f"{split}_manifest.csv"
+                for split in EXPECTED_SPLITS
+            },
+            "excluded": config.paths.processed_data_dir / "excluded_manifest.csv",
+            "split_summary": config.paths.processed_data_dir / "split_audit.json",
+        }
+
     image_paths = collect_image_paths(config.paths.data_root)
     raw_manifests = build_manifest_rows(image_paths)
     manifests = (
@@ -319,11 +338,11 @@ def parse_args() -> argparse.Namespace:
     Returns:
         Parsed command-line namespace.
     """
-    parser = argparse.ArgumentParser(description="Model eğitimi için manifest dosyaları üretir.")
+    parser = argparse.ArgumentParser(description="Generate manifest files for model training.")
     parser.add_argument(
         "--config",
         default="configs/config.yaml",
-        help="YAML config dosyası yolu.",
+        help="Path to the YAML configuration file.",
     )
     return parser.parse_args()
 
@@ -344,10 +363,10 @@ def main() -> int:
         DatasetStandardizationError,
         OSError,
     ) as error:
-        print(f"HATA: {error}")
+        print(f"ERROR: {error}")
         return 1
 
-    print("Manifest dosyaları oluşturuldu.")
+    print("Manifest files created.")
     for split, output_path in output_paths.items():
         print(f"- {split}: {output_path}")
     return 0

@@ -27,6 +27,7 @@ data/raw/
 data/processed/
 reports/figures/
 reports/metrics/
+reports/data_access_*/
 models/
 *.pt
 *.pth

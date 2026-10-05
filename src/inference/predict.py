@@ -13,6 +13,7 @@ from torch import Tensor, nn
 from torchvision import transforms
 
 from src.data.dataset import ID_TO_LABEL, LABEL_TO_ID, SUPPORTED_IMAGE_EXTENSIONS
+from src.data.image_preparation import prepare_image
 from src.data.transforms import IMAGENET_NORMALIZATION_MEAN, IMAGENET_NORMALIZATION_STD
 from src.training.models import build_model
 
@@ -49,6 +50,9 @@ class LoadedModel:
     normalization_std: tuple[float, float, float]
     label_mapping: dict[str, int]
     device: torch.device
+    decision_threshold: float = DEFAULT_PNEUMONIA_THRESHOLD
+    model_version: str = ""
+    preprocessing: str = "resize"
 
 
 @dataclass(frozen=True)
@@ -100,8 +104,8 @@ def load_model(checkpoint_path: str | Path) -> LoadedModel:
     resolved_checkpoint_path = Path(checkpoint_path)
     if not resolved_checkpoint_path.is_file():
         message = (
-            f"Model checkpoint dosyası bulunamadı: {resolved_checkpoint_path}. "
-            "Önce modeli eğitin veya doğru `--model` yolunu verin."
+            f"Model checkpoint file not found: {resolved_checkpoint_path}. "
+            "Train a model first or provide the correct `--model` path."
         )
         raise FileNotFoundError(message)
 
@@ -109,25 +113,27 @@ def load_model(checkpoint_path: str | Path) -> LoadedModel:
     try:
         checkpoint = torch.load(resolved_checkpoint_path, map_location=device, weights_only=False)
     except (OSError, RuntimeError, ValueError) as error:
-        message = f"Model checkpoint dosyası yüklenemedi: {resolved_checkpoint_path}. Hata: {error}"
+        message = (
+            f"Could not load the model checkpoint file: {resolved_checkpoint_path}. Error: {error}"
+        )
         raise InferenceError(message) from error
 
     if not isinstance(checkpoint, dict):
-        message = f"Checkpoint dict formatında değil: {resolved_checkpoint_path}"
+        message = f"The checkpoint is not a dictionary: {resolved_checkpoint_path}"
         raise InferenceError(message)
 
     required_keys = {"model_name", "model_state_dict", "label_mapping", "image_size"}
     missing_keys = required_keys.difference(checkpoint)
     if missing_keys:
         formatted_keys = ", ".join(sorted(missing_keys))
-        message = f"Checkpoint gerekli inference alanlarını içermiyor: {formatted_keys}"
+        message = f"The checkpoint is missing required inference fields: {formatted_keys}"
         raise InferenceError(message)
 
     label_mapping = checkpoint["label_mapping"]
     if label_mapping != LABEL_TO_ID:
         message = (
-            "Checkpoint label mapping beklenen değerle eşleşmiyor. "
-            f"Beklenen={LABEL_TO_ID}, alınan={label_mapping}"
+            "The checkpoint label mapping does not match the expected values. "
+            f"Expected={LABEL_TO_ID}, received={label_mapping}"
         )
         raise InferenceError(message)
 
@@ -141,11 +147,22 @@ def load_model(checkpoint_path: str | Path) -> LoadedModel:
     try:
         model.load_state_dict(checkpoint["model_state_dict"])
     except RuntimeError as error:
-        message = f"Checkpoint ağırlıkları `{model_name}` mimarisiyle uyumlu değil: {error}"
+        message = f"Checkpoint weights are incompatible with `{model_name}`: {error}"
         raise InferenceError(message) from error
 
     image_size = _parse_image_size(checkpoint["image_size"])
     normalization_mean, normalization_std = _parse_normalization(checkpoint)
+    try:
+        decision_threshold = float(
+            checkpoint.get("decision_threshold", DEFAULT_PNEUMONIA_THRESHOLD)
+        )
+    except (TypeError, ValueError) as error:
+        raise InferenceError("Checkpoint decision_threshold must be numeric") from error
+    if not 0.0 <= decision_threshold <= 1.0:
+        raise InferenceError("Checkpoint decision_threshold must be finite and in [0, 1]")
+    preprocessing = str(checkpoint.get("preprocessing", "resize"))
+    if preprocessing not in {"resize", "clahe"}:
+        raise InferenceError(f"Unknown checkpoint preprocessing: {preprocessing}")
     model.to(device)
     model.eval()
 
@@ -158,6 +175,9 @@ def load_model(checkpoint_path: str | Path) -> LoadedModel:
         normalization_std=normalization_std,
         label_mapping=label_mapping,
         device=device,
+        decision_threshold=decision_threshold,
+        model_version=str(checkpoint.get("model_version", resolved_checkpoint_path.name)),
+        preprocessing=preprocessing,
     )
 
 
@@ -166,6 +186,7 @@ def preprocess_image(
     image_size: int = DEFAULT_IMAGE_SIZE,
     normalization_mean: tuple[float, float, float] = IMAGENET_NORMALIZATION_MEAN,
     normalization_std: tuple[float, float, float] = IMAGENET_NORMALIZATION_STD,
+    preprocessing: str = "resize",
 ) -> Tensor:
     """Load, validate, and transform one image for model inference.
 
@@ -183,7 +204,7 @@ def preprocess_image(
         InferenceError: If the image is unsupported, corrupt, or cannot be transformed.
     """
     if image_size <= 0:
-        message = f"image_size pozitif bir tam sayı olmalı; alınan değer: {image_size}"
+        message = f"image_size must be a positive integer; received: {image_size}"
         raise InferenceError(message)
 
     try:
@@ -193,6 +214,7 @@ def preprocess_image(
     except InferenceError:
         raise
 
+    pil_image = prepare_image(pil_image, image_size, preprocessing)
     transform = transforms.Compose(
         [
             transforms.Resize((image_size, image_size)),
@@ -203,7 +225,7 @@ def preprocess_image(
     try:
         image_tensor = transform(pil_image)
     except (RuntimeError, ValueError, TypeError) as error:
-        message = f"Görüntü inference transform aşamasında işlenemedi. Hata: {error}"
+        message = f"Could not process the image during the inference transform. Error: {error}"
         raise InferenceError(message) from error
 
     return image_tensor.unsqueeze(0)
@@ -224,8 +246,8 @@ def predict_image(model: LoadedModel, image: Tensor) -> dict[str, str | float]:
     """
     if image.ndim != 4 or image.shape[0] != 1 or image.shape[1] != 3:
         message = (
-            "Inference görüntü tensörü `(1, 3, height, width)` formatında olmalı; "
-            f"alınan shape: {tuple(image.shape)}"
+            "The inference image tensor must have shape `(1, 3, height, width)`; "
+            f"received shape: {tuple(image.shape)}"
         )
         raise InferenceError(message)
 
@@ -234,31 +256,29 @@ def predict_image(model: LoadedModel, image: Tensor) -> dict[str, str | float]:
             logits = model.model(image.to(model.device))
             probabilities = torch.softmax(logits, dim=1).squeeze(0).cpu()
     except RuntimeError as error:
-        message = f"Model tahmini üretilemedi. Hata: {error}"
+        message = f"Could not generate a model prediction. Error: {error}"
         raise InferenceError(message) from error
 
     if probabilities.numel() != len(ID_TO_LABEL):
         message = (
-            f"Model {len(ID_TO_LABEL)} sınıf olasılığı döndürmeliydi; "
-            f"alınan olasılık sayısı: {probabilities.numel()}"
+            f"The model must return {len(ID_TO_LABEL)} class probabilities; "
+            f"received probability count: {probabilities.numel()}"
         )
         raise InferenceError(message)
 
     pneumonia_probability = float(probabilities[PNEUMONIA_LABEL_ID].item())
     normal_probability = float(probabilities[NORMAL_LABEL_ID].item())
     predicted_label_id = (
-        PNEUMONIA_LABEL_ID
-        if pneumonia_probability >= DEFAULT_PNEUMONIA_THRESHOLD
-        else NORMAL_LABEL_ID
+        PNEUMONIA_LABEL_ID if pneumonia_probability >= model.decision_threshold else NORMAL_LABEL_ID
     )
     predicted_label = ID_TO_LABEL[predicted_label_id]
-    confidence = max(normal_probability, pneumonia_probability)
+    confidence = float(probabilities[predicted_label_id].item())
     result = PredictionResult(
         predicted_label=predicted_label,
         pneumonia_probability=pneumonia_probability,
         normal_probability=normal_probability,
         confidence=confidence,
-        model_version=model.checkpoint_path.name,
+        model_version=model.model_version or model.checkpoint_path.name,
     )
     return result.to_dict()
 
@@ -286,6 +306,7 @@ def predict_image_file(
         image_size=loaded_model.image_size,
         normalization_mean=loaded_model.normalization_mean,
         normalization_std=loaded_model.normalization_std,
+        preprocessing=loaded_model.preprocessing,
     )
     return predict_image(loaded_model, image_tensor)
 
@@ -293,23 +314,23 @@ def predict_image_file(
 def _open_image(image_path_or_bytes: str | Path | bytes) -> Image.Image:
     if isinstance(image_path_or_bytes, bytes):
         if not image_path_or_bytes:
-            message = "Görüntü byte içeriği boş; geçerli bir JPEG, JPG veya PNG gönderin."
+            message = "Image bytes are empty; provide a valid JPEG, JPG, or PNG image."
             raise InferenceError(message)
         try:
             with Image.open(io.BytesIO(image_path_or_bytes)) as image:
                 return image.convert("RGB")
         except (OSError, UnidentifiedImageError) as error:
-            message = f"Görüntü byte içeriği okunamadı veya bozuk. Hata: {error}"
+            message = f"Image bytes are unreadable or corrupted. Error: {error}"
             raise InferenceError(message) from error
 
     image_path = Path(image_path_or_bytes)
     if not image_path.is_file():
-        message = f"Görüntü dosyası bulunamadı: {image_path}"
+        message = f"Image file not found: {image_path}"
         raise FileNotFoundError(message)
     if image_path.suffix.lower() not in SUPPORTED_IMAGE_EXTENSIONS:
         message = (
-            f"Desteklenmeyen görüntü formatı: {image_path.suffix}. "
-            f"Desteklenen uzantılar: {', '.join(sorted(SUPPORTED_IMAGE_EXTENSIONS))}"
+            f"Unsupported image format: {image_path.suffix}. "
+            f"Supported extensions: {', '.join(sorted(SUPPORTED_IMAGE_EXTENSIONS))}"
         )
         raise InferenceError(message)
 
@@ -317,7 +338,7 @@ def _open_image(image_path_or_bytes: str | Path | bytes) -> Image.Image:
         with Image.open(image_path) as image:
             return image.convert("RGB")
     except (OSError, UnidentifiedImageError) as error:
-        message = f"Görüntü dosyası okunamadı veya bozuk: {image_path}. Hata: {error}"
+        message = f"The image file is unreadable or corrupted: {image_path}. Error: {error}"
         raise InferenceError(message) from error
 
 
@@ -325,10 +346,10 @@ def _parse_image_size(raw_image_size: object) -> int:
     try:
         image_size = int(raw_image_size)
     except (TypeError, ValueError) as error:
-        message = f"Checkpoint image_size tam sayı olmalı; alınan değer: {raw_image_size}"
+        message = f"Checkpoint image_size must be an integer; received: {raw_image_size}"
         raise InferenceError(message) from error
     if image_size <= 0:
-        message = f"Checkpoint image_size pozitif olmalı; alınan değer: {image_size}"
+        message = f"Checkpoint image_size must be positive; received: {image_size}"
         raise InferenceError(message)
     return image_size
 
@@ -338,7 +359,7 @@ def _parse_normalization(
 ) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
     normalization = checkpoint.get("normalization", {})
     if not isinstance(normalization, dict):
-        message = "Checkpoint normalization alanı dict formatında olmalı."
+        message = "Checkpoint normalization must be a dictionary."
         raise InferenceError(message)
 
     mean = _parse_float_triplet(
@@ -350,7 +371,7 @@ def _parse_normalization(
         field_name="normalization.std",
     )
     if any(value <= 0.0 for value in std):
-        message = f"Checkpoint normalization.std değerleri pozitif olmalı; alınan değer: {std}"
+        message = f"Checkpoint normalization.std values must be positive; received: {std}"
         raise InferenceError(message)
     return mean, std
 
@@ -361,11 +382,11 @@ def _parse_float_triplet(raw_values: object, *, field_name: str) -> tuple[float,
         or isinstance(raw_values, str | bytes)
         or len(raw_values) != 3
     ):
-        message = f"Checkpoint {field_name} üç elemanlı liste veya tuple olmalı."
+        message = f"Checkpoint {field_name} must be a three-element list or tuple."
         raise InferenceError(message)
     try:
         values = tuple(float(value) for value in raw_values)
     except (TypeError, ValueError) as error:
-        message = f"Checkpoint {field_name} yalnızca sayısal değerler içermeli."
+        message = f"Checkpoint {field_name} must contain only numeric values."
         raise InferenceError(message) from error
     return values[0], values[1], values[2]

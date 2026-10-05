@@ -13,8 +13,8 @@ from urllib.parse import ParseResult, urlparse
 
 import streamlit as st
 
-APP_TITLE: Final[str] = "Akciğer Röntgeninden Zatürre Tespiti"
-MEDICAL_WARNING: Final[str] = "Bu çıktı tıbbi teşhis amacıyla kullanılmamalıdır."
+APP_TITLE: Final[str] = "Pneumonia Classification from Chest X-Rays"
+MEDICAL_WARNING: Final[str] = "This output must not be used for medical diagnosis."
 DEFAULT_API_BASE_URL: Final[str] = "http://127.0.0.1:8000"
 API_BASE_URL_ENVIRONMENT_VARIABLE: Final[str] = "PNEUMONIA_API_URL"
 SUPPORTED_UPLOAD_TYPES: Final[tuple[str, ...]] = ("jpeg", "jpg", "png")
@@ -84,7 +84,7 @@ def fetch_health(api_base_url: str) -> dict[str, object]:
 
     response = send_json_request(api_base_url=api_base_url, path="/health")
     if not isinstance(response, dict):
-        message = "API health yanıtı JSON nesnesi formatında değil."
+        message = "The API health response is not a JSON object."
         raise ApiClientError(message)
     return response
 
@@ -104,7 +104,7 @@ def fetch_model_info(api_base_url: str) -> dict[str, object]:
 
     response = send_json_request(api_base_url=api_base_url, path="/model-info")
     if not isinstance(response, dict):
-        message = "API model bilgisi yanıtı JSON nesnesi formatında değil."
+        message = "The API model information response is not a JSON object."
         raise ApiClientError(message)
     return response
 
@@ -133,7 +133,7 @@ def predict_uploaded_image(
     """
 
     if not image_bytes:
-        message = "Yüklenen görüntü boş; JPEG, JPG veya PNG formatında bir dosya seçin."
+        message = "The uploaded image is empty; select a JPEG, JPG, or PNG file."
         raise ApiClientError(message)
 
     response = send_multipart_image_request(
@@ -144,7 +144,7 @@ def predict_uploaded_image(
         content_type=content_type,
     )
     if not isinstance(response, dict):
-        message = "API tahmin yanıtı JSON nesnesi formatında değil."
+        message = "The API prediction response is not a JSON object."
         raise ApiClientError(message)
 
     return parse_prediction_response(response)
@@ -172,7 +172,7 @@ def send_json_request(*, api_base_url: str, path: str) -> object:
         response = connection.getresponse()
         return read_json_response(response)
     except (OSError, HTTPException, TimeoutError) as error:
-        message = f"API isteği başarısız oldu ({api_base_url}{path}): {error}"
+        message = f"API request failed ({api_base_url}{path}): {error}"
         raise ApiClientError(message) from error
     finally:
         connection.close()
@@ -224,7 +224,7 @@ def send_multipart_image_request(
         response = connection.getresponse()
         return read_json_response(response)
     except (OSError, HTTPException, TimeoutError) as error:
-        message = f"API tahmin isteği başarısız oldu ({api_base_url}{path}): {error}"
+        message = f"API prediction request failed ({api_base_url}{path}): {error}"
         raise ApiClientError(message) from error
     finally:
         connection.close()
@@ -246,11 +246,11 @@ def parse_api_base_url(api_base_url: str) -> ParseResult:
     parsed_url = urlparse(api_base_url)
     if parsed_url.scheme not in {"http", "https"}:
         message = (
-            f"API URL `http` veya `https` ile başlamalı; alınan değer: {api_base_url or 'boş'}"
+            f"The API URL must start with `http` or `https`; received: {api_base_url or 'empty'}"
         )
         raise ApiClientError(message)
     if not parsed_url.hostname:
-        message = f"API URL geçerli bir host içermeli; alınan değer: {api_base_url}"
+        message = f"The API URL must include a valid host; received: {api_base_url}"
         raise ApiClientError(message)
     return parsed_url
 
@@ -347,12 +347,12 @@ def read_json_response(response: JsonHttpResponse) -> object:
     try:
         payload = json.loads(text) if text else {}
     except json.JSONDecodeError as error:
-        message = f"API JSON olmayan yanıt döndürdü: HTTP {response.status} {response.reason}"
+        message = f"The API returned a non-JSON response: HTTP {response.status} {response.reason}"
         raise ApiClientError(message) from error
 
     if response.status < 200 or response.status >= 300:
         detail = extract_error_detail(payload)
-        message = f"API hata döndürdü: HTTP {response.status} {response.reason}. {detail}"
+        message = f"The API returned an error: HTTP {response.status} {response.reason}. {detail}"
         raise ApiClientError(message)
 
     return payload
@@ -372,7 +372,7 @@ def extract_error_detail(payload: object) -> str:
         detail = payload.get("detail")
         if isinstance(detail, str) and detail:
             return detail
-    return "Detay alınamadı."
+    return "No details available."
 
 
 def parse_prediction_response(payload: dict[str, object]) -> PredictionResult:
@@ -391,10 +391,10 @@ def parse_prediction_response(payload: dict[str, object]) -> PredictionResult:
     predicted_label = payload.get("predicted_label")
     warning = payload.get("warning")
     if not isinstance(predicted_label, str) or predicted_label not in {"NORMAL", "PNEUMONIA"}:
-        message = f"API geçersiz predicted_label döndürdü: {predicted_label}"
+        message = f"The API returned an invalid predicted_label: {predicted_label}"
         raise ApiClientError(message)
     if not isinstance(warning, str) or not warning:
-        message = "API yanıtında tıbbi uyarı alanı eksik veya geçersiz."
+        message = "The API response has a missing or invalid medical warning."
         raise ApiClientError(message)
 
     return PredictionResult(
@@ -422,11 +422,11 @@ def parse_probability(payload: dict[str, object], key: str) -> float:
 
     raw_value = payload.get(key)
     if not isinstance(raw_value, int | float):
-        message = f"API yanıtında `{key}` sayısal değil: {raw_value}"
+        message = f"`{key}` in the API response is not numeric: {raw_value}"
         raise ApiClientError(message)
     value = float(raw_value)
     if value < 0.0 or value > 1.0:
-        message = f"API yanıtında `{key}` 0 ile 1 arasında olmalı; alınan değer: {value}"
+        message = f"`{key}` in the API response must be between 0 and 1; received: {value}"
         raise ApiClientError(message)
     return value
 
@@ -450,12 +450,17 @@ def render_sidebar(api_base_url: str) -> None:
         api_base_url: Current API base URL.
     """
 
-    st.sidebar.header("Servis")
-    st.sidebar.code("python -m uvicorn app.api.main:app --host 0.0.0.0 --port 8000")
+    st.sidebar.header("Service")
+    st.sidebar.caption("PowerShell: select your trained checkpoint, then start the API.")
+    st.sidebar.code(
+        '$env:PNEUMONIA_MODEL_PATH = "models/clean_runs/selected/best_model.pt"\n'
+        "python -m uvicorn app.api.main:app --host 127.0.0.1 --port 8000",
+        language="powershell",
+    )
     st.sidebar.code("python -m streamlit run app/ui/streamlit_app.py")
     st.sidebar.caption(f"API: {api_base_url}")
 
-    if st.sidebar.button("API Durumunu Kontrol Et"):
+    if st.sidebar.button("Check API Status"):
         try:
             health = fetch_health(api_base_url)
             model_info = fetch_model_info(api_base_url)
@@ -464,28 +469,41 @@ def render_sidebar(api_base_url: str) -> None:
             return
 
         model_loaded = bool(health.get("model_loaded"))
-        status_text = "Model yüklü" if model_loaded else "Model yüklenmedi"
-        st.sidebar.success(f"API erişilebilir: {status_text}")
-        st.sidebar.write(f"Model: `{model_info.get('model_name', 'bilinmiyor')}`")
-        st.sidebar.write(f"Checkpoint: `{model_info.get('model_version', 'bilinmiyor')}`")
+        status_text = "Model loaded" if model_loaded else "Model not loaded"
+        st.sidebar.success(f"API available: {status_text}")
+        st.sidebar.write(f"Model: `{model_info.get('model_name', 'unknown')}`")
+        st.sidebar.write(f"Checkpoint: `{model_info.get('model_version', 'unknown')}`")
 
 
-def render_prediction_result(result: PredictionResult) -> None:
+def render_prediction_result(
+    result: PredictionResult, decision_threshold: float | None = None
+) -> None:
     """Render the prediction result section.
 
     Args:
         result: Prediction returned by the API.
+        decision_threshold: Active API threshold, if available.
     """
 
-    st.subheader("Tahmin Sonucu")
+    st.subheader("Prediction Result")
     if result.predicted_label == "PNEUMONIA":
         st.error("PNEUMONIA")
     else:
         st.success("NORMAL")
 
-    render_probability("NORMAL olasılığı", result.normal_probability)
-    render_probability("PNEUMONIA olasılığı", result.pneumonia_probability)
-    st.metric("Güven skoru", f"{result.confidence:.2%}")
+    render_probability("NORMAL probability", result.normal_probability)
+    render_probability("PNEUMONIA probability", result.pneumonia_probability)
+    st.metric("Selected class probability", f"{result.confidence:.2%}")
+    if decision_threshold is not None:
+        st.caption(f"PNEUMONIA decision threshold: {decision_threshold:.8f}")
+    else:
+        st.caption("Active decision threshold is unavailable from the API.")
+    st.caption(
+        "PNEUMONIA is selected when its probability reaches the decision threshold; "
+        "otherwise NORMAL is selected, even if PNEUMONIA has the higher probability. "
+        "Selected class probability is the probability assigned to that selected label. "
+        "These model scores are not calibrated clinical risk estimates."
+    )
     st.warning(result.warning)
 
 
@@ -498,26 +516,26 @@ def main() -> None:
 
     st.title(APP_TITLE)
     st.write(
-        "Bu demo, yüklenen akciğer röntgeni görüntüsünü eğitilmiş CNN modeliyle "
-        "`NORMAL` veya `PNEUMONIA` olarak sınıflandırır."
+        "This demo uses a trained CNN to classify an uploaded chest X-ray as "
+        "`NORMAL` or `PNEUMONIA`."
     )
     st.warning(MEDICAL_WARNING)
 
     uploaded_file = st.file_uploader(
-        "Röntgen görüntüsü yükleyin",
+        "Upload an X-ray image",
         type=list(SUPPORTED_UPLOAD_TYPES),
         accept_multiple_files=False,
     )
 
     if uploaded_file is None:
-        st.info("Tahmin almak için JPEG, JPG veya PNG formatında bir röntgen görüntüsü yükleyin.")
+        st.info("Upload a chest X-ray in JPEG, JPG, or PNG format to get a prediction.")
         return
 
     image_bytes = uploaded_file.getvalue()
     st.image(image_bytes, caption=uploaded_file.name, width="stretch")
 
-    if st.button("Tahmin Et", type="primary"):
-        with st.spinner("Model tahmini alınıyor..."):
+    if st.button("Predict", type="primary"):
+        with st.spinner("Generating prediction..."):
             try:
                 result = predict_uploaded_image(
                     api_base_url=api_base_url,
@@ -528,12 +546,18 @@ def main() -> None:
             except ApiClientError as error:
                 st.error(str(error))
                 st.info(
-                    "API servisinin çalıştığından ve `models/best_model.pt` dosyasının "
-                    "mevcut olduğundan emin olun."
+                    "Make sure the API service is running and the configured checkpoint file "
+                    "exists."
                 )
                 return
 
-        render_prediction_result(result)
+        try:
+            decision_threshold = parse_probability(
+                fetch_model_info(api_base_url), "decision_threshold"
+            )
+        except ApiClientError:
+            decision_threshold = None
+        render_prediction_result(result, decision_threshold)
 
 
 if __name__ == "__main__":

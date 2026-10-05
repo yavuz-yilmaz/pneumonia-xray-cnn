@@ -14,11 +14,11 @@ def parse_args() -> argparse.Namespace:
     Returns:
         Parsed CLI arguments.
     """
-    parser = argparse.ArgumentParser(description="SimpleCNN baseline modelini eğit.")
+    parser = argparse.ArgumentParser(description="Train the SimpleCNN baseline model.")
     parser.add_argument(
         "--config",
         default="configs/config.yaml",
-        help="YAML config dosyası yolu.",
+        help="Path to the YAML configuration file.",
     )
     return parser.parse_args()
 
@@ -35,7 +35,7 @@ def main() -> None:
         figure_filename="baseline_training_curves.png",
     )
     print(
-        "Baseline CNN hazır. "
+        "Baseline CNN ready. "
         f"best_epoch={result.best_epoch}, "
         f"validation_accuracy={result.best_metrics.validation_accuracy:.4f}, "
         f"validation_precision={result.best_metrics.validation_precision:.4f}, "

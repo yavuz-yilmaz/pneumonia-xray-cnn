@@ -92,10 +92,10 @@ def resolve_device(device_name: str) -> torch.device:
             return torch.device("mps")
         return torch.device("cpu")
     if normalized_device_name == "cuda" and not torch.cuda.is_available():
-        message = "Config device='cuda' seçilmiş ancak CUDA kullanılabilir değil."
+        message = "Config device='cuda' was selected, but CUDA is unavailable."
         raise RuntimeError(message)
     if normalized_device_name == "mps" and not torch.backends.mps.is_available():
-        message = "Config device='mps' seçilmiş ancak Apple MPS kullanılabilir değil."
+        message = "Config device='mps' was selected, but Apple MPS is unavailable."
         raise RuntimeError(message)
     return torch.device(normalized_device_name)
 
@@ -143,8 +143,8 @@ def train_model(
     )
     if resolved_early_stopping_patience < 1:
         message = (
-            "early_stopping_patience pozitif bir tam sayı olmalı; "
-            f"alınan değer: {resolved_early_stopping_patience}"
+            "early_stopping_patience must be a positive integer; "
+            f"received value: {resolved_early_stopping_patience}"
         )
         raise ValueError(message)
 
@@ -171,7 +171,7 @@ def train_model(
     start_time = perf_counter()
 
     print(
-        "Eğitim başlıyor: "
+        "Starting training: "
         f"model={resolved_model_name}, device={device}, epochs={config.training.epochs}, "
         f"fine_tune_epochs={config.training.fine_tune_epochs}, "
         f"trainable_parameters={count_trainable_parameters(model)}"
@@ -193,7 +193,7 @@ def train_model(
         if phase_name == "fine_tuning":
             unfreeze_fine_tuning_layers(model, resolved_model_name)
             print(
-                "Fine-tuning aşaması başlıyor: "
+                "Starting fine-tuning: "
                 f"trainable_parameters={count_trainable_parameters(model)}, "
                 f"learning_rate={phase_learning_rate}"
             )
@@ -273,12 +273,12 @@ def train_model(
                     print(
                         "Early stopping tetiklendi: "
                         f"{resolved_early_stopping_patience} epoch boyunca "
-                        f"{phase_name} validation loss iyileşmedi."
+                        f"{phase_name} validation loss did not improve."
                     )
                     break
 
     if best_model_state is None or best_metrics is None:
-        message = "Eğitim tamamlandı ancak en iyi model durumu kaydedilemedi."
+        message = "Training completed, but the best model state could not be saved."
         raise RuntimeError(message)
 
     elapsed_seconds = perf_counter() - start_time
@@ -337,10 +337,10 @@ def build_training_phases(
         placeholder is filled by `train_model` to keep the phase order testable.
     """
     if classifier_epochs < 1:
-        message = f"classifier_epochs pozitif olmalı; alınan değer: {classifier_epochs}"
+        message = f"classifier_epochs must be positive; received value: {classifier_epochs}"
         raise ValueError(message)
     if fine_tune_epochs < 0:
-        message = f"fine_tune_epochs negatif olamaz; alınan değer: {fine_tune_epochs}"
+        message = f"fine_tune_epochs must not be negative; received value: {fine_tune_epochs}"
         raise ValueError(message)
 
     normalized_model_name = model_name.strip().lower()
@@ -631,16 +631,16 @@ def parse_args() -> argparse.Namespace:
     Returns:
         Parsed CLI arguments.
     """
-    parser = argparse.ArgumentParser(description="Baseline veya transfer learning modelini eğit.")
+    parser = argparse.ArgumentParser(description="Train a baseline or transfer learning model.")
     parser.add_argument(
         "--config",
         default="configs/config.yaml",
-        help="YAML config dosyası yolu.",
+        help="Path to the YAML configuration file.",
     )
     parser.add_argument(
         "--model-name",
         default=None,
-        help="Eğitilecek model adı. Verilmezse config içindeki model.name kullanılır.",
+        help="Model name to train. Defaults to model.name in the configuration.",
     )
     return parser.parse_args()
 
@@ -660,7 +660,7 @@ def main() -> None:
 
     result = train_model(config, model_name=args.model_name)
     print(
-        "Eğitim tamamlandı. "
+        "Training completed. "
         f"best_epoch={result.best_epoch}, "
         f"val_loss={result.best_metrics.validation_loss:.4f}, "
         f"val_acc={result.best_metrics.validation_accuracy:.4f}, "

@@ -22,7 +22,7 @@ from src.inference.predict import (
     preprocess_image,
 )
 
-MEDICAL_WARNING = "Bu çıktı tıbbi teşhis amacıyla kullanılmamalıdır."
+MEDICAL_WARNING = "This output must not be used for medical diagnosis."
 DEFAULT_CONFIG_PATH = Path("configs/config.yaml")
 MODEL_PATH_ENVIRONMENT_VARIABLE = "PNEUMONIA_MODEL_PATH"
 MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024
@@ -59,6 +59,8 @@ class ModelInfoResponse(BaseModel):
     image_size: int
     label_mapping: dict[str, int]
     device: str
+    decision_threshold: float
+    preprocessing: str
     warning: str
 
 
@@ -116,13 +118,13 @@ def create_app(
         try:
             api_app.state.loaded_model = load_model(resolved_checkpoint_path)
         except (FileNotFoundError, InferenceError) as error:
-            message = f"API modeli başlatılamadı: {error}"
+            message = f"Could not initialize the API model: {error}"
             raise RuntimeError(message) from error
         yield
 
     api_app = FastAPI(
         title="Pneumonia X-Ray CNN API",
-        description="Akciğer röntgenlerinden NORMAL/PNEUMONIA tahmini üreten API.",
+        description="An API that predicts NORMAL/PNEUMONIA classes from chest X-rays.",
         version="0.1.0",
         lifespan=lifespan,
     )
@@ -152,12 +154,12 @@ def create_app(
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={
-                    "detail": "Görüntü dosyası gönderilmedi; multipart `file` alanı zorunludur."
+                    "detail": "No image file was provided; the multipart `file` field is required."
                 },
             )
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            content={"detail": "İstek doğrulanamadı; multipart görüntü yüklemesini kontrol edin."},
+            content={"detail": "Request validation failed; check the multipart image upload."},
         )
 
     @api_app.get(
@@ -198,11 +200,13 @@ def create_app(
         loaded_model = get_loaded_model(api_app)
         return ModelInfoResponse(
             model_name=loaded_model.model_name,
-            model_version=loaded_model.checkpoint_path.name,
+            model_version=loaded_model.model_version or loaded_model.checkpoint_path.name,
             checkpoint_path=str(loaded_model.checkpoint_path),
             image_size=loaded_model.image_size,
             label_mapping=loaded_model.label_mapping,
             device=str(loaded_model.device),
+            decision_threshold=loaded_model.decision_threshold,
+            preprocessing=loaded_model.preprocessing,
             warning=MEDICAL_WARNING,
         )
 
@@ -238,12 +242,13 @@ def create_app(
                 image_size=loaded_model.image_size,
                 normalization_mean=loaded_model.normalization_mean,
                 normalization_std=loaded_model.normalization_std,
+                preprocessing=loaded_model.preprocessing,
             )
             prediction = predict_image(loaded_model, image_tensor)
         except InferenceError as error:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Görüntü işlenemedi: {error}",
+                detail=f"Could not process the image: {error}",
             ) from error
 
         return PredictionResponse(
@@ -285,7 +290,7 @@ def resolve_checkpoint_path(
     try:
         config = load_config(config_path)
     except ConfigFileError as error:
-        message = f"API checkpoint yolu belirlenemedi; config okunamadı: {error}"
+        message = f"Could not resolve the API checkpoint path; configuration read failed: {error}"
         raise RuntimeError(message) from error
     return config.paths.best_model_path
 
@@ -307,7 +312,7 @@ def get_loaded_model(api_app: FastAPI) -> LoadedModel:
     if not isinstance(loaded_model, LoadedModel):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Model henüz yüklenmedi; servis başlatma durumunu kontrol edin.",
+            detail="The model has not loaded yet; check the service startup status.",
         )
     return loaded_model
 
@@ -325,7 +330,7 @@ def validate_upload_metadata(file: UploadFile) -> None:
     if not file.filename:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Görüntü dosyası gönderilmedi; multipart `file` alanı zorunludur.",
+            detail="No image file was provided; the multipart `file` field is required.",
         )
 
     suffix = Path(file.filename).suffix.lower()
@@ -334,8 +339,8 @@ def validate_upload_metadata(file: UploadFile) -> None:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail=(
-                f"Desteklenmeyen görüntü formatı: {suffix or 'uzantı yok'}. "
-                f"Desteklenen uzantılar: {supported_extensions}"
+                f"Unsupported image format: {suffix or 'no extension'}. "
+                f"Supported extensions: {supported_extensions}"
             ),
         )
 
@@ -343,8 +348,8 @@ def validate_upload_metadata(file: UploadFile) -> None:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail=(
-                f"Desteklenmeyen içerik tipi: {file.content_type}. "
-                "JPEG, JPG veya PNG görüntü yükleyin."
+                f"Unsupported content type: {file.content_type}. "
+                "Upload a JPEG, JPG, or PNG image."
             ),
         )
 
@@ -367,19 +372,19 @@ async def read_upload_bytes(file: UploadFile) -> bytes:
     except OSError as error:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Yüklenen dosya okunamadı: {error}",
+            detail=f"Could not read the uploaded file: {error}",
         ) from error
 
     if not image_bytes:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Yüklenen görüntü dosyası boş.",
+            detail="The uploaded image file is empty.",
         )
     if len(image_bytes) > MAX_UPLOAD_SIZE_BYTES:
         maximum_megabytes = MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"Yüklenen görüntü {maximum_megabytes} MB sınırını aşıyor.",
+            detail=f"The uploaded image exceeds the {maximum_megabytes} MB limit.",
         )
     return image_bytes
 

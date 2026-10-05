@@ -76,11 +76,11 @@ def parse_args() -> argparse.Namespace:
     Returns:
         Parsed command-line namespace.
     """
-    parser = argparse.ArgumentParser(description="Veri seti için EDA grafik ve rapor üretir.")
+    parser = argparse.ArgumentParser(description="Generate dataset EDA figures and a report.")
     parser.add_argument(
         "--config",
         default="configs/config.yaml",
-        help="YAML config dosyası yolu.",
+        help="Path to the YAML configuration file.",
     )
     return parser.parse_args()
 
@@ -198,7 +198,7 @@ def collect_eda_measurements(config: ProjectConfig) -> EdaComputation:
                     sample_images[label].append(filepath)
 
     if not records:
-        message = "EDA üretilemedi; veri setinde okunabilir görüntü bulunamadı."
+        message = "Could not run EDA; the dataset contains no readable images."
         raise EdaError(message)
 
     average_pixel_maps: dict[str, np.ndarray] = {}
@@ -384,27 +384,27 @@ def build_observations(
     overall_ratio = imbalance_summary["overall"]["majority_to_minority_ratio"]
     if isinstance(overall_ratio, float) and overall_ratio >= 1.5:
         observations.append(
-            "Sınıf dağılımı dengesiz görünüyor; eğitimde class weight veya sampler "
-            "kullanılması önerilir."
+            "The class distribution appears imbalanced; consider class weights or a sampler "
+            "during training."
         )
     else:
-        observations.append("Genel sınıf dağılımı ağır bir dengesizlik göstermiyor.")
+        observations.append("The overall class distribution is not severely imbalanced.")
 
     aspect_ratio_std = dimension_summary["overall"]["aspect_ratio"]["std"]
     if isinstance(aspect_ratio_std, float) and aspect_ratio_std > 0.25:
         observations.append(
-            "Aspect ratio dağılımı geniş; resize işleminde oran bozulmasının etkisi izlenmeli."
+            "Aspect ratios vary widely; monitor distortion introduced by resizing."
         )
     else:
-        observations.append("Aspect ratio dağılımı görece kontrollü görünüyor.")
+        observations.append("Aspect ratios appear relatively consistent.")
 
     if corrupted_count:
         observations.append(
-            f"EDA sırasında {corrupted_count} okunamayan görüntü bulundu; eğitimden önce "
-            "bu dosyalar incelenmelidir."
+            f"EDA found {corrupted_count} unreadable images; before training, "
+            "inspect these files."
         )
     else:
-        observations.append("EDA sırasında okunamayan görüntüyle karşılaşılmadı.")
+        observations.append("No unreadable images were found during EDA.")
     return observations
 
 
@@ -420,18 +420,18 @@ def build_recommendations(
         Recommended modeling actions.
     """
     recommendations = [
-        "Görüntüler sabit boyuta getirilirken eğitim ve inference aşamalarında aynı "
-        "normalizasyon kullanılmalıdır.",
-        "Tıbbi anlamı bozabilecek agresif augmentasyonlardan kaçınılmalıdır.",
-        "Model seçiminde accuracy ile birlikte recall, precision, F1-score ve confusion matrix "
-        "mutlaka raporlanmalıdır.",
+        "When resizing images to a fixed size, use the same "
+        "normalization for training and inference.",
+        "Avoid aggressive augmentations that could alter medically meaningful features.",
+        "During model selection, report recall, precision, F1-score, and the confusion matrix "
+        "alongside accuracy.",
     ]
     overall_ratio = imbalance_summary["overall"]["majority_to_minority_ratio"]
     if isinstance(overall_ratio, float) and overall_ratio >= 1.5:
         recommendations.insert(
             0,
-            "PNEUMONIA ve NORMAL sınıfları arasındaki dengesizlik için weighted loss "
-            "veya WeightedRandomSampler denenmelidir.",
+            "To address the imbalance between PNEUMONIA and NORMAL, try weighted loss "
+            "or WeightedRandomSampler.",
         )
     return recommendations
 
@@ -532,8 +532,8 @@ def save_class_distribution_plot(
 
     plt.xticks(x_positions, EXPECTED_SPLITS)
     plt.xlabel("Split")
-    plt.ylabel("Görüntü sayısı")
-    plt.title("Train/Val/Test Sınıf Dağılımı")
+    plt.ylabel("Image count")
+    plt.title("Train/Val/Test Class Distribution")
     plt.legend()
     plt.tight_layout()
     plt.savefig(output_path, dpi=160)
@@ -568,7 +568,7 @@ def save_sample_grid(label: str, sample_paths: list[Path], output_path: Path) ->
         axes_array[index].set_title(filepath.name, fontsize=8)
         axes_array[index].axis("off")
 
-    fig.suptitle(f"{label} Örnek Görüntüleri", fontsize=14)
+    fig.suptitle(f"{label} Sample Images", fontsize=14)
     plt.tight_layout()
     plt.savefig(output_path, dpi=160)
     plt.close(fig)
@@ -587,15 +587,15 @@ def save_image_size_distribution(records: list[ImageEdaRecord], output_path: Pat
     arrays = records_to_arrays(records)
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
     axes[0].scatter(arrays["width"], arrays["height"], alpha=0.35, s=12)
-    axes[0].set_xlabel("Genişlik")
-    axes[0].set_ylabel("Yükseklik")
-    axes[0].set_title("Genişlik/Yükseklik Dağılımı")
+    axes[0].set_xlabel("Width")
+    axes[0].set_ylabel("Height")
+    axes[0].set_title("Width/Height Distribution")
 
-    axes[1].hist(arrays["width"], bins=40, alpha=0.7, label="Genişlik")
-    axes[1].hist(arrays["height"], bins=40, alpha=0.7, label="Yükseklik")
-    axes[1].set_xlabel("Piksel")
-    axes[1].set_ylabel("Görüntü sayısı")
-    axes[1].set_title("Boyut Histogramları")
+    axes[1].hist(arrays["width"], bins=40, alpha=0.7, label="Width")
+    axes[1].hist(arrays["height"], bins=40, alpha=0.7, label="Height")
+    axes[1].set_xlabel("Pixels")
+    axes[1].set_ylabel("Image count")
+    axes[1].set_title("Dimension Histograms")
     axes[1].legend()
     plt.tight_layout()
     plt.savefig(output_path, dpi=160)
@@ -615,9 +615,9 @@ def save_aspect_ratio_distribution(records: list[ImageEdaRecord], output_path: P
     arrays = records_to_arrays(records)
     plt.figure(figsize=(9, 5))
     plt.hist(arrays["aspect_ratio"], bins=50, color="#4C78A8", alpha=0.85)
-    plt.xlabel("Aspect ratio (genişlik / yükseklik)")
-    plt.ylabel("Görüntü sayısı")
-    plt.title("Aspect Ratio Dağılımı")
+    plt.xlabel("Aspect ratio (width / height)")
+    plt.ylabel("Image count")
+    plt.title("Aspect Ratio Distribution")
     plt.tight_layout()
     plt.savefig(output_path, dpi=160)
     plt.close()
@@ -635,9 +635,9 @@ def save_pixel_intensity_histogram(pixel_histogram: np.ndarray, output_path: Pat
     """
     plt.figure(figsize=(10, 5))
     plt.plot(np.arange(HISTOGRAM_BINS), pixel_histogram, color="#2F855A", linewidth=1.5)
-    plt.xlabel("Piksel yoğunluğu")
-    plt.ylabel("Piksel sayısı")
-    plt.title("Toplam Piksel Yoğunluğu Histogramı")
+    plt.xlabel("Pixel intensity")
+    plt.ylabel("Pixel count")
+    plt.title("Aggregate Pixel Intensity Histogram")
     plt.tight_layout()
     plt.savefig(output_path, dpi=160)
     plt.close()
@@ -660,7 +660,7 @@ def save_average_pixel_maps(
     axes_array = np.asarray(axes).reshape(-1)
     for axis, label in zip(axes_array, EXPECTED_CLASSES, strict=True):
         image = axis.imshow(average_pixel_maps[label], cmap="gray", vmin=0, vmax=255)
-        axis.set_title(f"{label} Ortalama Piksel Haritası")
+        axis.set_title(f"{label} Average Pixel Map")
         axis.axis("off")
         fig.colorbar(image, ax=axis, fraction=0.046, pad=0.04)
     plt.tight_layout()
@@ -709,17 +709,17 @@ def format_optional_number(value: JsonValue, precision: int = 3) -> str:
         precision: Number of decimal places for floats.
 
     Returns:
-        Formatted value or `yok` for missing values.
+        Formatted value or `N/A` for missing values.
     """
     if value is None:
-        return "yok"
+        return "N/A"
     if isinstance(value, float):
         return f"{value:.{precision}f}"
     return str(value)
 
 
 def build_markdown_report(summary: dict[str, JsonValue], figure_paths: list[Path]) -> str:
-    """Build the Turkish EDA Markdown summary.
+    """Build the English EDA Markdown summary.
 
     Args:
         summary: EDA summary payload.
@@ -732,32 +732,32 @@ def build_markdown_report(summary: dict[str, JsonValue], figure_paths: list[Path
     imbalance_summary = summary["imbalance_summary"]
     dimension_summary = summary["dimension_summary"]
     if not isinstance(class_distribution, dict):
-        raise EdaError("EDA özeti class_distribution alanı geçersiz.")
+        raise EdaError("Invalid class_distribution field in the EDA summary.")
     if not isinstance(imbalance_summary, dict):
-        raise EdaError("EDA özeti imbalance_summary alanı geçersiz.")
+        raise EdaError("Invalid imbalance_summary field in the EDA summary.")
     if not isinstance(dimension_summary, dict):
-        raise EdaError("EDA özeti dimension_summary alanı geçersiz.")
+        raise EdaError("Invalid dimension_summary field in the EDA summary.")
 
     lines = [
-        "# EDA Özeti",
+        "# EDA Summary",
         "",
-        "Bu doküman `python -m src.eda.run_eda --config configs/config.yaml` komutu ile "
-        "otomatik oluşturulmuştur.",
+        "This document was automatically generated with "
+        "`python -m src.eda.run_eda --config configs/config.yaml`.",
         "",
-        "## Veri Seti Özeti",
+        "## Dataset Summary",
         "",
-        f"- Okunabilir görüntü sayısı: {summary['total_readable_images']}",
-        f"- Okunamayan görüntü sayısı: {summary['corrupted_image_count']}",
+        f"- Readable image count: {summary['total_readable_images']}",
+        f"- Unreadable image count: {summary['corrupted_image_count']}",
         "",
-        "## Sınıf Dağılımı",
+        "## Class Distribution",
         "",
-        "| Split | NORMAL | PNEUMONIA | Toplam |",
+        "| Split | NORMAL | PNEUMONIA | Total |",
         "| --- | ---: | ---: | ---: |",
     ]
     for split in EXPECTED_SPLITS:
         split_distribution = class_distribution[split]
         if not isinstance(split_distribution, dict):
-            raise EdaError(f"EDA özeti {split} dağılımı geçersiz.")
+            raise EdaError(f"Invalid {split} distribution in the EDA summary.")
         lines.append(
             f"| {split} | {split_distribution['NORMAL']} | "
             f"{split_distribution['PNEUMONIA']} | {split_distribution['total']} |"
@@ -766,27 +766,27 @@ def build_markdown_report(summary: dict[str, JsonValue], figure_paths: list[Path
     overall_imbalance = imbalance_summary["overall"]
     overall_dimensions = dimension_summary["overall"]
     if not isinstance(overall_imbalance, dict):
-        raise EdaError("EDA özeti overall imbalance alanı geçersiz.")
+        raise EdaError("Invalid overall imbalance field in the EDA summary.")
     if not isinstance(overall_dimensions, dict):
-        raise EdaError("EDA özeti overall dimension alanı geçersiz.")
+        raise EdaError("Invalid overall dimension field in the EDA summary.")
 
     lines.extend(
         [
             "",
-            "## Sayısal Özet",
+            "## Numerical Summary",
             "",
-            "- Çoğunluk/azınlık sınıf oranı: "
+            "- Majority/minority class ratio: "
             f"{format_optional_number(overall_imbalance['majority_to_minority_ratio'])}",
-            "- Ortalama genişlik: "
-            f"{format_nested_stat(overall_dimensions, 'width', 'mean')} piksel",
-            "- Ortalama yükseklik: "
-            f"{format_nested_stat(overall_dimensions, 'height', 'mean')} piksel",
-            "- Ortalama aspect ratio: "
+            "- Mean width: "
+            f"{format_nested_stat(overall_dimensions, 'width', 'mean')} pixels",
+            "- Mean height: "
+            f"{format_nested_stat(overall_dimensions, 'height', 'mean')} pixels",
+            "- Mean aspect ratio: "
             f"{format_nested_stat(overall_dimensions, 'aspect_ratio', 'mean')}",
-            "- Ortalama piksel yoğunluğu: "
+            "- Mean pixel intensity: "
             f"{format_nested_stat(overall_dimensions, 'mean_intensity', 'mean')}",
             "",
-            "## Gözlenen Olası Problemler",
+            "## Potential Issues",
             "",
         ]
     )
@@ -794,12 +794,12 @@ def build_markdown_report(summary: dict[str, JsonValue], figure_paths: list[Path
     if isinstance(observations, list):
         lines.extend(f"- {observation}" for observation in observations)
 
-    lines.extend(["", "## Modelleme İçin Öneriler", ""])
+    lines.extend(["", "## Modeling Recommendations", ""])
     recommendations = summary["recommendations"]
     if isinstance(recommendations, list):
         lines.extend(f"- {recommendation}" for recommendation in recommendations)
 
-    lines.extend(["", "## Üretilen Görseller", ""])
+    lines.extend(["", "## Generated Figures", ""])
     lines.extend(f"- `{path.as_posix()}`" for path in figure_paths)
     lines.append("")
     return "\n".join(lines)
@@ -822,7 +822,7 @@ def format_nested_stat(
     """
     group = summary[group_name]
     if not isinstance(group, dict):
-        return "yok"
+        return "N/A"
     return format_optional_number(group[stat_name])
 
 
@@ -888,13 +888,13 @@ def main() -> int:
         config = load_and_prepare_config(args.config)
         summary, output_paths, markdown_path = run_eda(config)
     except (ConfigFileError, DatasetValidationError, EdaError, OSError) as error:
-        print(f"HATA: {error}")
+        print(f"ERROR: {error}")
         return 1
 
-    print("EDA tamamlandı.")
-    print(f"Okunabilir görüntü sayısı: {summary['total_readable_images']}")
-    print(f"Okunamayan görüntü sayısı: {summary['corrupted_image_count']}")
-    print("Üretilen dosyalar:")
+    print("EDA completed.")
+    print(f"Readable image count: {summary['total_readable_images']}")
+    print(f"Unreadable image count: {summary['corrupted_image_count']}")
+    print("Generated files:")
     for output_path in output_paths:
         print(f"- {output_path}")
     print(f"- {markdown_path}")

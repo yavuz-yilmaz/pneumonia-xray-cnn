@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import csv
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 from PIL import Image, UnidentifiedImageError
 from torch import Tensor
 from torch.utils.data import Dataset
-
 
 LABEL_TO_ID: dict[str, int] = {"NORMAL": 0, "PNEUMONIA": 1}
 ID_TO_LABEL: dict[int, str] = {label_id: label for label, label_id in LABEL_TO_ID.items()}
@@ -51,6 +50,7 @@ class ChestXRayDataset(Dataset[tuple[Tensor, int]]):
     """
 
     required_columns = frozenset({"filepath", "split", "label", "label_id"})
+    label_mapping = LABEL_TO_ID
 
     def __init__(
         self,
@@ -88,19 +88,22 @@ class ChestXRayDataset(Dataset[tuple[Tensor, int]]):
                 rgb_image = image.convert("RGB")
         except (OSError, UnidentifiedImageError) as error:
             message = (
-                f"Görüntü okunamadı: {sample.filepath}. "
-                f"Split='{sample.split}', label='{sample.label}'. Hata: {error}"
+                f"Could not read the image: {sample.filepath}. "
+                f"Split='{sample.split}', label='{sample.label}'. Error: {error}"
             )
             raise XRayDatasetError(message) from error
 
         if self.transform is None:
-            message = "Dataset transform tanımlı değil; görüntüyü tensöre çevirmek için transform gerekir."
+            message = (
+                "No dataset transform is configured; "
+                "a transform is required to convert the image to a tensor."
+            )
             raise XRayDatasetError(message)
 
         try:
             image_tensor = self.transform(rgb_image)
         except (RuntimeError, ValueError, TypeError) as error:
-            message = f"Görüntü transform aşamasında işlenemedi: {sample.filepath}. Hata: {error}"
+            message = f"Could not process the image during transformation: {sample.filepath}. Error: {error}"
             raise XRayDatasetError(message) from error
 
         return image_tensor, sample.label_id
@@ -122,41 +125,44 @@ class ChestXRayDataset(Dataset[tuple[Tensor, int]]):
     @classmethod
     def _load_manifest(cls, manifest_path: Path) -> list[XRaySample]:
         if not manifest_path.is_file():
-            message = f"Manifest dosyası bulunamadı: {manifest_path}"
+            message = f"Manifest file not found: {manifest_path}"
             raise XRayDatasetError(message)
 
         try:
             with manifest_path.open("r", encoding="utf-8", newline="") as manifest_file:
                 reader = csv.DictReader(manifest_file)
                 if reader.fieldnames is None:
-                    message = f"Manifest boş veya başlık satırı yok: {manifest_path}"
+                    message = f"The manifest is empty or has no header row: {manifest_path}"
                     raise XRayDatasetError(message)
 
                 missing_columns = cls.required_columns.difference(reader.fieldnames)
                 if missing_columns:
                     formatted_columns = ", ".join(sorted(missing_columns))
                     message = (
-                        f"Manifest gerekli kolonları içermiyor: {manifest_path}. "
-                        f"Eksik kolonlar: {formatted_columns}"
+                        f"The manifest is missing required columns: {manifest_path}. "
+                        f"Missing columns: {formatted_columns}"
                     )
                     raise XRayDatasetError(message)
 
                 samples = [
-                    cls._parse_manifest_row(row=row, row_number=row_number, manifest_path=manifest_path)
+                    cls._parse_manifest_row(
+                        row=row, row_number=row_number, manifest_path=manifest_path
+                    )
                     for row_number, row in enumerate(reader, start=2)
                 ]
         except OSError as error:
-            message = f"Manifest dosyası okunamadı: {manifest_path}. Hata: {error}"
+            message = f"Could not read the manifest file: {manifest_path}. Error: {error}"
             raise XRayDatasetError(message) from error
 
         if not samples:
-            message = f"Manifest içinde örnek bulunamadı: {manifest_path}"
+            message = f"No samples found in the manifest: {manifest_path}"
             raise XRayDatasetError(message)
 
         return samples
 
-    @staticmethod
+    @classmethod
     def _parse_manifest_row(
+        cls,
         row: dict[str, str],
         row_number: int,
         manifest_path: Path,
@@ -167,39 +173,41 @@ class ChestXRayDataset(Dataset[tuple[Tensor, int]]):
         label_id_value = row.get("label_id", "").strip()
 
         if not filepath_value:
-            message = f"Manifest satırında filepath boş: {manifest_path}:{row_number}"
+            message = f"Empty filepath in manifest row: {manifest_path}:{row_number}"
             raise XRayDatasetError(message)
 
         filepath = Path(filepath_value)
         if not filepath.is_file():
-            message = f"Manifest görsel dosyası bulunamadı: {filepath} ({manifest_path}:{row_number})"
+            message = (
+                f"Manifest image file not found: {filepath} ({manifest_path}:{row_number})"
+            )
             raise XRayDatasetError(message)
 
         if filepath.suffix.lower() not in SUPPORTED_IMAGE_EXTENSIONS:
             message = (
-                f"Desteklenmeyen görsel uzantısı: {filepath.suffix} ({filepath}). "
-                f"Desteklenen uzantılar: {sorted(SUPPORTED_IMAGE_EXTENSIONS)}"
+                f"Unsupported image extension: {filepath.suffix} ({filepath}). "
+                f"Supported extensions: {sorted(SUPPORTED_IMAGE_EXTENSIONS)}"
             )
             raise XRayDatasetError(message)
 
-        if label not in LABEL_TO_ID:
+        if label not in cls.label_mapping:
             message = (
-                f"Geçersiz label değeri: '{label}' ({manifest_path}:{row_number}). "
-                f"Beklenen değerler: {sorted(LABEL_TO_ID)}"
+                f"Invalid label value: '{label}' ({manifest_path}:{row_number}). "
+                f"Expected values: {sorted(cls.label_mapping)}"
             )
             raise XRayDatasetError(message)
 
         try:
             label_id = int(label_id_value)
         except ValueError as error:
-            message = f"label_id tam sayı olmalı: '{label_id_value}' ({manifest_path}:{row_number})"
+            message = f"label_id must be an integer: '{label_id_value}' ({manifest_path}:{row_number})"
             raise XRayDatasetError(message) from error
 
-        expected_label_id = LABEL_TO_ID[label]
+        expected_label_id = cls.label_mapping[label]
         if label_id != expected_label_id:
             message = (
-                f"Label mapping tutarsız: label='{label}' için label_id={expected_label_id} "
-                f"bekleniyordu, {label_id} alındı ({manifest_path}:{row_number})."
+                f"Inconsistent label mapping: label='{label}' requires label_id={expected_label_id} "
+                f"but received {label_id} ({manifest_path}:{row_number})."
             )
             raise XRayDatasetError(message)
 

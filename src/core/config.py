@@ -35,6 +35,8 @@ class DataSettings(BaseModel):
     num_workers: int = Field(default=0, ge=0, le=32)
     pin_memory: bool = False
     use_stratified_validation_split: bool = True
+    use_group_disjoint_split: bool = False
+    split_seed: int = Field(default=20260915, ge=0)
     validation_split_fraction: float = Field(default=0.15, gt=0.0, lt=0.5)
 
 
@@ -60,7 +62,14 @@ class ModelSettings(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: Literal["simple_cnn", "resnet18", "efficientnet_b0", "mobilenet_v3_small"] = "resnet18"
+    name: Literal[
+        "simple_cnn",
+        "resnet18",
+        "efficientnet_b0",
+        "efficientnet_v2_s",
+        "mobilenet_v3_small",
+        "xrv_densenet121",
+    ] = "resnet18"
     pretrained: bool = True
     freeze_backbone: bool = True
     num_classes: int = Field(default=2, ge=2)

@@ -35,7 +35,7 @@ def test_preprocess_image_rejects_unsupported_extension(tmp_path: Path) -> None:
     text_path = tmp_path / "sample.txt"
     text_path.write_text("not an image", encoding="utf-8")
 
-    with pytest.raises(InferenceError, match="Desteklenmeyen görüntü formatı"):
+    with pytest.raises(InferenceError, match="Unsupported image format"):
         preprocess_image(text_path)
 
 
@@ -64,13 +64,42 @@ def test_predict_image_rejects_unbatched_tensor(tmp_path: Path) -> None:
     checkpoint_path = _create_test_checkpoint(tmp_path)
     loaded_model = load_model(checkpoint_path)
 
-    with pytest.raises(InferenceError, match="formatında olmalı"):
+    with pytest.raises(InferenceError, match="must have shape"):
         predict_image(loaded_model, torch.zeros(3, 32, 32))
 
 
 def test_load_model_rejects_missing_checkpoint(tmp_path: Path) -> None:
-    with pytest.raises(FileNotFoundError, match="Model checkpoint dosyası bulunamadı"):
+    with pytest.raises(FileNotFoundError, match="Model checkpoint file not found"):
         load_model(tmp_path / "missing.pt")
+
+
+def test_prediction_uses_checkpoint_threshold_and_selected_class_score(tmp_path: Path) -> None:
+    checkpoint_path = _create_test_checkpoint(tmp_path)
+    checkpoint = torch.load(checkpoint_path, weights_only=False)
+    checkpoint["decision_threshold"] = 0.7
+    checkpoint["model_version"] = "clean-test-v1"
+    torch.save(checkpoint, checkpoint_path)
+    loaded = load_model(checkpoint_path)
+    # Deterministic logits: P(NORMAL)=.4, P(PNEUMONIA)=.6.
+    with torch.no_grad():
+        for parameter in loaded.model.parameters():
+            parameter.zero_()
+        loaded.model.classifier[-1].bias.copy_(
+            torch.log(torch.tensor([0.4, 0.6], device=loaded.device))
+        )
+    prediction = predict_image(loaded, torch.zeros(1, 3, 32, 32))
+    assert prediction["predicted_label"] == "NORMAL"
+    assert prediction["confidence"] == pytest.approx(0.4)
+    assert prediction["model_version"] == "clean-test-v1"
+
+
+def test_load_model_rejects_invalid_threshold(tmp_path: Path) -> None:
+    checkpoint_path = _create_test_checkpoint(tmp_path)
+    checkpoint = torch.load(checkpoint_path, weights_only=False)
+    checkpoint["decision_threshold"] = float("nan")
+    torch.save(checkpoint, checkpoint_path)
+    with pytest.raises(InferenceError, match="decision_threshold"):
+        load_model(checkpoint_path)
 
 
 def _create_test_checkpoint(tmp_path: Path) -> Path:

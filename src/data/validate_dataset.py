@@ -47,8 +47,8 @@ def collect_image_paths(data_root: Path) -> dict[str, dict[str, list[Path]]]:
     """
     if not data_root.is_dir():
         message = (
-            f"Veri seti klasörü bulunamadı: {data_root}. "
-            "`chest_xray` klasörünü `data/raw/chest_xray` konumuna yerleştirin."
+            f"Dataset directory not found: {data_root}. "
+            "Place the `chest_xray` directory at `data/raw/chest_xray`."
         )
         raise DatasetValidationError(message)
 
@@ -70,7 +70,7 @@ def collect_image_paths(data_root: Path) -> dict[str, dict[str, list[Path]]]:
 
     if missing_directories:
         formatted_paths = "\n".join(f"- {path}" for path in missing_directories)
-        message = f"Veri seti klasör yapısı eksik:\n{formatted_paths}"
+        message = f"The dataset directory structure is incomplete:\n{formatted_paths}"
         raise DatasetValidationError(message)
 
     return image_paths
@@ -203,12 +203,12 @@ def parse_args() -> argparse.Namespace:
         Parsed command-line namespace.
     """
     parser = argparse.ArgumentParser(
-        description="Bozuk görsel ve sınıf dağılımı kontrolü yapar."
+        description="Check for corrupted images and inspect the class distribution."
     )
     parser.add_argument(
         "--config",
         default="configs/config.yaml",
-        help="YAML config dosyası yolu.",
+        help="Path to the YAML configuration file.",
     )
     return parser.parse_args()
 
@@ -226,19 +226,19 @@ def main() -> int:
         write_json(config.paths.metrics_dir / "dataset_summary.json", summary)
         write_json(config.paths.metrics_dir / "corrupted_images.json", corrupted_images)
     except (ConfigFileError, DatasetValidationError, OSError) as error:
-        print(f"HATA: {error}")
+        print(f"ERROR: {error}")
         return 1
 
-    print("Veri seti doğrulama tamamlandı.")
-    print(f"Özet dosyası: {config.paths.metrics_dir / 'dataset_summary.json'}")
-    print(f"Bozuk görsel raporu: {config.paths.metrics_dir / 'corrupted_images.json'}")
+    print("Dataset validation completed.")
+    print(f"Summary file: {config.paths.metrics_dir / 'dataset_summary.json'}")
+    print(f"Corrupted image report: {config.paths.metrics_dir / 'corrupted_images.json'}")
     for split in EXPECTED_SPLITS:
         split_summary = summary["splits"][split]
         print(
             f"- {split}: NORMAL={split_summary['NORMAL']}, "
-            f"PNEUMONIA={split_summary['PNEUMONIA']}, toplam={split_summary['total']}"
+            f"PNEUMONIA={split_summary['PNEUMONIA']}, total={split_summary['total']}"
         )
-    print(f"Bozuk görsel sayısı: {summary['corrupted_image_count']}")
+    print(f"Corrupted image count: {summary['corrupted_image_count']}")
     return 0
 
 

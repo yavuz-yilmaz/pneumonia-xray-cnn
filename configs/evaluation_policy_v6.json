@@ -1,0 +1,20 @@
+{
+  "registered_at_utc": "2026-09-15T22:22:10.630884+00:00",
+  "hypothesis": "Audited RSNA opacity pretraining improves pediatric feature learning beyond ImageNet alone.",
+  "pretraining": "models/clean_v6/rsna_pretrained/features.pt",
+  "pediatric_candidate": "models/clean_v6/rsna_then_pediatric",
+  "pediatric_recipe": {
+    "model": "resnet18",
+    "preprocessing": "clahe",
+    "augmentation": "mild",
+    "seed": 42,
+    "epochs": 16,
+    "patience": 5,
+    "lr": 0.0005,
+    "minimum_recall": 0.98
+  },
+  "transfer": "Backbone only, newly initialized pediatric classification head",
+  "comparison": "Candidate versus clean_v3 incumbent on validation specificity at recall>=0.98, then F1",
+  "test_rule": "Only test locked winner. Incumbent win reuses existing test report.",
+  "prior_exposure": "Both pediatric legacy and RSNA external benchmarks have been observed. Further results are exploratory."
+}

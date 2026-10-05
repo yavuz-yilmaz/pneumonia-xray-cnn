@@ -2,15 +2,76 @@
 
 from __future__ import annotations
 
+import hashlib
+from pathlib import Path
+
+import torch
 from torch import Tensor, nn
 from torchvision.models import (
     EfficientNet_B0_Weights,
+    EfficientNet_V2_S_Weights,
     MobileNet_V3_Small_Weights,
     ResNet18_Weights,
+    densenet121,
     efficientnet_b0,
+    efficientnet_v2_s,
     mobilenet_v3_small,
     resnet18,
 )
+
+
+class ResNet18Ensemble(nn.Module):
+    """Three independent ResNet18 members with fixed probability averaging."""
+
+    def __init__(self, num_classes: int = 2) -> None:
+        super().__init__()
+        self.members = nn.ModuleList(
+            [
+                build_resnet18(num_classes=num_classes, pretrained=False, freeze_backbone=False)
+                for _ in range(3)
+            ]
+        )
+
+    def forward(self, images: Tensor) -> Tensor:
+        """Return log probabilities so existing softmax-based consumers agree."""
+        probabilities = torch.stack([member(images).softmax(1) for member in self.members]).mean(0)
+        return probabilities.clamp_min(torch.finfo(probabilities.dtype).tiny).log()
+
+
+class XRayDenseNet121(nn.Module):
+    """Torchvision-compatible DenseNet with chest-X-ray-pretrained feature weights.
+
+    Inputs are RGB-repeated grayscale in the XRV [-1024, 1024] range. Exported
+    checkpoints need only torchvision; TorchXRayVision is a training-only loader.
+    """
+
+    def __init__(self, num_classes: int = 2, pretrained: bool = False) -> None:
+        super().__init__()
+        base = densenet121(weights=None)
+        base.features.conv0 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.features = base.features
+        self.classifier = nn.Linear(1024, num_classes)
+        if pretrained:
+            import torchxrayvision as xrv
+
+            source = xrv.models.DenseNet(weights="densenet121-res224-all")
+            self.features.load_state_dict(source.features.state_dict(), strict=True)
+            self.pretraining_metadata = {
+                "provider": "TorchXRayVision",
+                "weights": "densenet121-res224-all",
+                "sha256": hashlib.sha256(
+                    Path(source.weights_filename_local).read_bytes()
+                ).hexdigest(),
+            }
+
+    def extract_features(self, images: Tensor) -> Tensor:
+        """Produce the external pretrained representation without its disease heads."""
+        features = self.features(images.mean(dim=1, keepdim=True))
+        return nn.functional.adaptive_avg_pool2d(nn.functional.relu(features), (1, 1)).flatten(1)
+
+    def forward(self, images: Tensor) -> Tensor:
+        """Return binary class logits."""
+        return self.classifier(self.extract_features(images))
 
 
 class SimpleCNN(nn.Module):
@@ -27,12 +88,12 @@ class SimpleCNN(nn.Module):
     def __init__(self, num_classes: int = 2, dropout_probability: float = 0.3) -> None:
         super().__init__()
         if num_classes < 2:
-            message = f"num_classes en az 2 olmalı; alınan değer: {num_classes}"
+            message = f"num_classes must be at least 2; received: {num_classes}"
             raise ValueError(message)
         if not 0.0 <= dropout_probability < 1.0:
             message = (
-                "dropout_probability [0.0, 1.0) aralığında olmalı; "
-                f"alınan değer: {dropout_probability}"
+                "dropout_probability must be in [0.0, 1.0); "
+                f"received value: {dropout_probability}"
             )
             raise ValueError(message)
 
@@ -121,6 +182,28 @@ def build_model(
         ValueError: If the model name is unsupported.
     """
     normalized_model_name = model_name.strip().lower()
+    if normalized_model_name == "resnet18_ensemble3":
+        if pretrained:
+            raise ValueError("Ensembles must be exported from three completed runs")
+        return ResNet18Ensemble(num_classes)
+    if normalized_model_name == "efficientnet_v2_s":
+        weights = EfficientNet_V2_S_Weights.DEFAULT if pretrained else None
+        model = efficientnet_v2_s(weights=weights)
+        model.classifier[1] = nn.Linear(model.classifier[1].in_features, num_classes)
+        if weights is not None:
+            model.pretraining_metadata = {
+                "provider": "torchvision",
+                "weights": str(weights),
+                "url": weights.url,
+            }
+        if freeze_backbone:
+            freeze_feature_extractor(model)
+        return model
+    if normalized_model_name == "xrv_densenet121":
+        model = XRayDenseNet121(num_classes=num_classes, pretrained=pretrained)
+        if freeze_backbone:
+            freeze_feature_extractor(model)
+        return model
     if normalized_model_name == "simple_cnn":
         return SimpleCNN(num_classes=num_classes)
     if normalized_model_name == "resnet18":
@@ -143,8 +226,8 @@ def build_model(
         )
 
     message = (
-        "Desteklenen model adları: simple_cnn, resnet18, efficientnet_b0, "
-        f"mobilenet_v3_small. Alınan değer: {model_name}"
+        "Supported model names: simple_cnn, resnet18, efficientnet_b0, "
+        f"mobilenet_v3_small. Received value: {model_name}"
     )
     raise ValueError(message)
 
@@ -194,7 +277,7 @@ def build_efficientnet_b0(
     model = efficientnet_b0(weights=weights)
     final_linear = model.classifier[1]
     if not isinstance(final_linear, nn.Linear):
-        message = "EfficientNet-B0 classifier beklenen Linear katmanı içermiyor."
+        message = "The EfficientNet-B0 classifier is missing the expected Linear layer."
         raise TypeError(message)
     model.classifier[1] = nn.Linear(final_linear.in_features, num_classes)
     if freeze_backbone:
@@ -222,7 +305,7 @@ def build_mobilenet_v3_small(
     model = mobilenet_v3_small(weights=weights)
     final_linear = model.classifier[3]
     if not isinstance(final_linear, nn.Linear):
-        message = "MobileNetV3-Small classifier beklenen Linear katmanı içermiyor."
+        message = "The MobileNetV3-Small classifier is missing the expected Linear layer."
         raise TypeError(message)
     model.classifier[3] = nn.Linear(final_linear.in_features, num_classes)
     if freeze_backbone:
@@ -263,15 +346,15 @@ def unfreeze_fine_tuning_layers(model: nn.Module, model_name: str) -> None:
 
     if normalized_model_name == "resnet18":
         if not hasattr(model, "layer4"):
-            message = "ResNet18 modeli layer4 bloğunu içermiyor."
+            message = "The ResNet18 model is missing its layer4 block."
             raise ValueError(message)
         for parameter in model.layer4.parameters():
             parameter.requires_grad = True
         return
 
-    if normalized_model_name in {"efficientnet_b0", "mobilenet_v3_small"}:
+    if normalized_model_name in {"efficientnet_b0", "efficientnet_v2_s", "mobilenet_v3_small"}:
         if not hasattr(model, "features"):
-            message = f"{model_name} modeli features bloğunu içermiyor."
+            message = f"The {model_name} model is missing its features block."
             raise ValueError(message)
         final_feature_block = model.features[-1]
         for parameter in final_feature_block.parameters():
@@ -283,7 +366,7 @@ def unfreeze_fine_tuning_layers(model: nn.Module, model_name: str) -> None:
             parameter.requires_grad = True
         return
 
-    message = f"Fine-tuning için desteklenmeyen model adı: {model_name}"
+    message = f"Unsupported model name for fine-tuning: {model_name}"
     raise ValueError(message)
 
 
@@ -304,7 +387,7 @@ def get_classifier_module(model: nn.Module) -> nn.Module:
     if hasattr(model, "classifier") and isinstance(model.classifier, nn.Module):
         return model.classifier
 
-    message = f"Desteklenen classifier katmanı bulunamadı: {model.__class__.__name__}"
+    message = f"No supported classifier layer found: {model.__class__.__name__}"
     raise ValueError(message)
 
 

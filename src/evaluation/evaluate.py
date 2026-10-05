@@ -28,16 +28,19 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.core.config import ConfigFileError, ProjectConfig, load_and_prepare_config
-from src.data.dataloader import create_dataloaders, require_manifest_files
 from src.data.dataset import ID_TO_LABEL, LABEL_TO_ID, ChestXRayDataset, XRayDatasetError
+from src.data.image_preparation import CheckpointImageTransform
 from src.data.transforms import IMAGENET_NORMALIZATION_MEAN, IMAGENET_NORMALIZATION_STD
+from src.inference.predict import DEFAULT_PNEUMONIA_THRESHOLD
 from src.training.models import build_model
 from src.training.train import resolve_device
 
 POSITIVE_LABEL_ID = LABEL_TO_ID["PNEUMONIA"]
 NEGATIVE_LABEL_ID = LABEL_TO_ID["NORMAL"]
 CLASS_LABELS = [ID_TO_LABEL[NEGATIVE_LABEL_ID], ID_TO_LABEL[POSITIVE_LABEL_ID]]
-MEDICAL_WARNING = "Bu proje eğitim amaçlıdır; çıktılar tıbbi teşhis amacıyla kullanılmamalıdır."
+MEDICAL_WARNING = (
+    "This project is for educational purposes; its outputs must not be used for medical diagnosis."
+)
 
 
 @dataclass(frozen=True)
@@ -107,33 +110,33 @@ def load_checkpoint_model(checkpoint_path: Path, device: torch.device) -> Checkp
     """
     if not checkpoint_path.is_file():
         message = (
-            f"Eğitilmiş model checkpoint dosyası bulunamadı: {checkpoint_path}. "
-            "Önce `python -m src.training.train --config configs/config.yaml` komutunu çalıştırın."
+            f"Trained model checkpoint file not found: {checkpoint_path}. "
+            "First run `python -m src.training.train --config configs/config.yaml`."
         )
         raise FileNotFoundError(message)
 
     try:
         checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     except (OSError, RuntimeError, ValueError) as error:
-        message = f"Checkpoint yüklenemedi: {checkpoint_path}. Hata: {error}"
+        message = f"Could not load the checkpoint: {checkpoint_path}. Error: {error}"
         raise RuntimeError(message) from error
 
     if not isinstance(checkpoint, dict):
-        message = f"Checkpoint beklenen dict formatında değil: {checkpoint_path}"
+        message = f"The checkpoint is not in the expected dictionary format: {checkpoint_path}"
         raise RuntimeError(message)
 
     required_keys = {"model_name", "model_state_dict", "label_mapping", "image_size"}
     missing_keys = required_keys.difference(checkpoint)
     if missing_keys:
         formatted_keys = ", ".join(sorted(missing_keys))
-        message = f"Checkpoint gerekli alanları içermiyor: {formatted_keys}"
+        message = f"The checkpoint is missing required fields: {formatted_keys}"
         raise RuntimeError(message)
 
     label_mapping = checkpoint["label_mapping"]
     if label_mapping != LABEL_TO_ID:
         message = (
-            f"Checkpoint label mapping beklenen değerle eşleşmiyor. "
-            f"Beklenen={LABEL_TO_ID}, alınan={label_mapping}"
+            f"The checkpoint label mapping does not match the expected values. "
+            f"Expected={LABEL_TO_ID}, received={label_mapping}"
         )
         raise RuntimeError(message)
 
@@ -147,7 +150,7 @@ def load_checkpoint_model(checkpoint_path: Path, device: torch.device) -> Checkp
     try:
         model.load_state_dict(checkpoint["model_state_dict"])
     except RuntimeError as error:
-        message = f"Checkpoint model ağırlıkları '{model_name}' mimarisiyle uyumlu değil: {error}"
+        message = f"Checkpoint weights are incompatible with '{model_name}': {error}"
         raise RuntimeError(message) from error
 
     model.to(device)
@@ -164,6 +167,7 @@ def collect_test_predictions(
     model: nn.Module,
     dataloader: DataLoader[tuple[Tensor, Tensor]],
     device: torch.device,
+    decision_threshold: float = DEFAULT_PNEUMONIA_THRESHOLD,
 ) -> PredictionBatch:
     """Run model inference on the test DataLoader.
 
@@ -180,11 +184,13 @@ def collect_test_predictions(
     probabilities: list[float] = []
 
     with torch.no_grad():
-        for images, batch_labels in tqdm(dataloader, desc="Test değerlendirme", leave=False):
+        for images, batch_labels in tqdm(dataloader, desc="Test evaluation", leave=False):
             images = images.to(device, non_blocking=True)
             logits = model(images)
             batch_probabilities = torch.softmax(logits, dim=1)
-            batch_predictions = torch.argmax(batch_probabilities, dim=1)
+            batch_predictions = (
+                batch_probabilities[:, POSITIVE_LABEL_ID] >= decision_threshold
+            ).long()
 
             labels.extend(int(label) for label in batch_labels.cpu().tolist())
             predictions.extend(int(prediction) for prediction in batch_predictions.cpu().tolist())
@@ -194,7 +200,7 @@ def collect_test_predictions(
             )
 
     if not labels:
-        message = "Test DataLoader hiçbir örnek döndürmedi; test manifest dosyasını kontrol edin."
+        message = "The test DataLoader returned no samples; check the test manifest file."
         raise XRayDatasetError(message)
 
     return PredictionBatch(
@@ -277,6 +283,9 @@ def save_metrics_report(
     payload = {
         "checkpoint_path": str(checkpoint_bundle.checkpoint_path),
         "model_name": checkpoint_bundle.metadata["model_name"],
+        "decision_threshold": checkpoint_bundle.metadata.get(
+            "decision_threshold", DEFAULT_PNEUMONIA_THRESHOLD
+        ),
         "image_size": checkpoint_bundle.metadata["image_size"],
         "normalization": checkpoint_bundle.metadata.get(
             "normalization",
@@ -370,7 +379,7 @@ def save_roc_curve_figure(
         axis.text(
             0.5,
             0.5,
-            "ROC curve üretilemedi: test setinde tek sınıf var.",
+            "Could not generate an ROC curve: the test set contains only one class.",
             ha="center",
             va="center",
             transform=axis.transAxes,
@@ -420,7 +429,7 @@ def save_precision_recall_curve_figure(
         axis.text(
             0.5,
             0.5,
-            "Precision-recall curve üretilemedi: test setinde tek sınıf var.",
+            "Could not generate a precision-recall curve: the test set contains only one class.",
             ha="center",
             va="center",
             transform=axis.transAxes,
@@ -522,7 +531,7 @@ def save_misclassified_examples_figure(
                     axis.imshow(image.convert("L"), cmap="gray")
             except (OSError, UnidentifiedImageError) as error:
                 message = (
-                    f"Hatalı sınıflandırma görseli okunamadı: {sample.filepath}. Hata: {error}"
+                    f"Could not read the misclassified image: {sample.filepath}. Error: {error}"
                 )
                 raise OSError(message) from error
 
@@ -562,61 +571,65 @@ def save_evaluation_summary(
     false_negative_count = confusion["false_negative"]
 
     false_positive_note = (
-        f"- False positive sayısı: `{false_positive_count}`. "
-        "Bu durumda model NORMAL bir görüntüyü PNEUMONIA olarak işaretlemiştir."
+        f"- False positive count: `{false_positive_count}`. "
+        "The model classified a NORMAL image as PNEUMONIA."
     )
     false_negative_note = (
-        f"- False negative sayısı: `{false_negative_count}`. "
-        "Bu durumda model PNEUMONIA bir görüntüyü NORMAL olarak işaretlemiştir."
+        f"- False negative count: `{false_negative_count}`. "
+        "The model classified a PNEUMONIA image as NORMAL."
     )
     recall_note = (
-        "Recall, gerçekten zatürre olan örneklerin ne kadarının yakalandığını gösterir. "
-        "Bu projede PNEUMONIA pozitif sınıf olarak ele alındığı için düşük recall, "
-        "zatürre bulgusu taşıyan bazı görüntülerin NORMAL olarak kaçırılması anlamına "
-        "gelir. Klinik bağlamda bu hata tipi daha risklidir; ancak bu proje yalnızca "
-        "eğitim ve akademik çalışma amacıyla değerlendirilmelidir."
+        "Recall measures the proportion of pneumonia-positive samples detected. "
+        "Because PNEUMONIA is the positive class in this project, low recall means "
+        "some images with pneumonia findings are missed and classified as NORMAL. "
+        "This error can be more serious clinically; however, this project is intended "
+        "only for educational and academic work."
     )
 
-    summary = f"""# Test Seti Değerlendirme Özeti
+    decision_threshold = checkpoint_bundle.metadata.get(
+        "decision_threshold", DEFAULT_PNEUMONIA_THRESHOLD
+    )
+    summary = f"""# Test Set Evaluation Summary
 
-## Test Sonuçları
+## Test Results
 
 - Model: `{checkpoint_bundle.metadata["model_name"]}`
 - Checkpoint: `{checkpoint_bundle.checkpoint_path}`
-- Test örnek sayısı: `{metrics["sample_count"]}`
+- Decision threshold: `{decision_threshold:.6f}`
+- Test sample count: `{metrics["sample_count"]}`
 - Accuracy: `{metrics["accuracy"]:.4f}`
 - Precision: `{metrics["precision"]:.4f}`
 - Recall: `{metrics["recall"]:.4f}`
 - F1-score: `{metrics["f1_score"]:.4f}`
 - ROC-AUC: `{format_metric_value(metrics["roc_auc"])}`
 
-## En Güçlü Metrikler
+## Strongest Metrics
 
 {strongest_metrics}
 
-## Zayıf Noktalar
+## Weaknesses
 
 {weakest_metrics}
 
-## False Positive / False Negative Yorumu
+## False Positive / False Negative Interpretation
 
 {false_positive_note}
 {false_negative_note}
-- Hatalı sınıflandırılan örnekler: `{outputs.misclassified_examples_path}`
+- Misclassified samples: `{outputs.misclassified_examples_path}`
 
-## Tıbbi Bağlamda Recall Neden Önemli?
+## Why Does Recall Matter in a Medical Context?
 
 {recall_note}
 
-## Üretilen Çıktılar
+## Generated Outputs
 
-- Metrikler: `{outputs.metrics_path}`
+- Metrics: `{outputs.metrics_path}`
 - Confusion matrix: `{outputs.confusion_matrix_path}`
 - ROC curve: `{outputs.roc_curve_path}`
 - Precision-recall curve: `{outputs.precision_recall_curve_path}`
-- Hatalı örnekler: `{outputs.misclassified_examples_path}`
+- Misclassified samples: `{outputs.misclassified_examples_path}`
 
-## Uyarı
+## Warning
 
 {MEDICAL_WARNING}
 """
@@ -646,7 +659,7 @@ def identify_strongest_metrics(metrics: dict[str, Any]) -> str:
         if np.isfinite(metric_value)
     }
     if not finite_metrics:
-        return "- Güçlü metrik belirlenemedi; hesaplanabilir metrik yok."
+        return "- No strongest metric could be identified; no computable metrics are available."
 
     sorted_metrics = sorted(finite_metrics.items(), key=lambda item: item[1], reverse=True)
     return "\n".join(
@@ -677,7 +690,7 @@ def identify_weakest_metrics(metrics: dict[str, Any]) -> str:
         if np.isfinite(metric_value)
     }
     if not finite_metrics:
-        return "- Zayıf metrik belirlenemedi; hesaplanabilir metrik yok."
+        return "- No weakest metric could be identified; no computable metrics are available."
 
     sorted_metrics = sorted(finite_metrics.items(), key=lambda item: item[1])
     return "\n".join(
@@ -696,7 +709,7 @@ def format_metric_value(value: float) -> str:
         Four-decimal string or a descriptive missing value marker.
     """
     if not np.isfinite(value):
-        return "hesaplanamadı"
+        return "not computable"
     return f"{value:.4f}"
 
 
@@ -714,20 +727,27 @@ def evaluate_model(config: ProjectConfig) -> EvaluationOutputs:
         RuntimeError: If model loading or evaluation fails.
         XRayDatasetError: If test data manifests are unavailable or invalid.
     """
-    require_manifest_files(config.paths.processed_data_dir)
     device = resolve_device(config.training.device)
-    dataloaders = create_dataloaders(config)
     checkpoint_bundle = load_checkpoint_model(config.paths.best_model_path, device)
-
-    test_dataset = dataloaders.test.dataset
-    if not isinstance(test_dataset, ChestXRayDataset):
-        message = f"Beklenen test dataset tipi ChestXRayDataset, alınan: {type(test_dataset)}"
-        raise TypeError(message)
+    test_dataset = ChestXRayDataset(
+        config.paths.processed_data_dir / "test_manifest.csv",
+        transform=CheckpointImageTransform.from_metadata(checkpoint_bundle.metadata),
+    )
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=config.data.batch_size,
+        num_workers=config.data.num_workers,
+        shuffle=False,
+        pin_memory=config.data.pin_memory,
+    )
 
     prediction_batch = collect_test_predictions(
         model=checkpoint_bundle.model,
-        dataloader=dataloaders.test,
+        dataloader=test_loader,
         device=device,
+        decision_threshold=float(
+            checkpoint_bundle.metadata.get("decision_threshold", DEFAULT_PNEUMONIA_THRESHOLD)
+        ),
     )
     metrics = calculate_metrics(prediction_batch)
 
@@ -774,12 +794,12 @@ def parse_args() -> argparse.Namespace:
         Parsed CLI arguments.
     """
     parser = argparse.ArgumentParser(
-        description="Eğitilmiş en iyi modeli test setinde değerlendir."
+        description="Evaluate the best trained model on the test set."
     )
     parser.add_argument(
         "--config",
         default="configs/config.yaml",
-        help="YAML config dosyası yolu.",
+        help="Path to the YAML configuration file.",
     )
     return parser.parse_args()
 
@@ -801,7 +821,7 @@ def main() -> None:
     outputs = evaluate_model(config)
     metrics_payload = json.loads(outputs.metrics_path.read_text(encoding="utf-8"))
     test_metrics = metrics_payload["test_metrics"]
-    print("Test değerlendirmesi tamamlandı.")
+    print("Test evaluation completed.")
     print(f"accuracy={test_metrics['accuracy']:.4f}")
     print(f"precision={test_metrics['precision']:.4f}")
     print(f"recall={test_metrics['recall']:.4f}")

@@ -1,0 +1,28 @@
+{
+  "recorded_at_utc": "2026-09-15T21:38:37.638262+00:00",
+  "hypothesis": "Larger ImageNet representation and acquisition augmentation improve generalization beyond CLAHE alone.",
+  "manifests": "data/processed/clean_v1",
+  "candidates": [
+    "models/clean_v3/resnet18_clahe",
+    "models/clean_v4/resnet18_acquisition",
+    "models/clean_v4/efficientnet_v2_s_acquisition"
+  ],
+  "preprocessing": "clahe",
+  "augmentation": "90-100% random resized crop, mild affine, brightness/contrast 0.3, random autocontrast and softening; no flips",
+  "epochs": 20,
+  "patience": 6,
+  "warmup_epochs": 2,
+  "seed": 42,
+  "resnet18": {
+    "batch_size": 24,
+    "lr": 0.0005
+  },
+  "efficientnet_v2_s": {
+    "batch_size": 8,
+    "lr": 0.0003
+  },
+  "checkpoint_selection": "Minimum validation cross entropy",
+  "candidate_selection": "Maximum validation specificity with recall >=0.98, tie by F1; includes incumbent",
+  "test_policy": "Only evaluate locked winner, once; do not tune test threshold. If incumbent wins, retain existing benchmark result.",
+  "test_status": "Legacy benchmark already inspected during v1-v3; this experiment cannot establish unbiased external generalization."
+}

@@ -1,0 +1,19 @@
+{
+  "registered_at_utc": "2026-09-15T22:03:31.638923+00:00",
+  "hypothesis": "Equal averaging of independently fine-tuned seeds reduces prediction variance without tuning ensemble weights.",
+  "members": [
+    "models/clean_v3/resnet18_clahe",
+    "models/clean_v5/resnet18_seed7",
+    "models/clean_v5/resnet18_seed2026"
+  ],
+  "recipe": "resnet18, ImageNet, CLAHE, mild augmentation, 16 epochs maximum, patience 5, LR 0.0005",
+  "seeds": [
+    42,
+    7,
+    2026
+  ],
+  "combination": "Arithmetic mean of three class probability vectors; weights fixed at 1/3",
+  "candidate_selection": "Compare only fixed ensemble against incumbent; maximum validation specificity at recall >=0.98 then F1. Individual new seeds are not additional candidates.",
+  "test_policy": "Evaluate locked winner only; incumbent win reuses existing test evidence. No external retuning.",
+  "prior_exposure": "Legacy pediatric test and RSNA external v1 have been observed. Further claims on either are exploratory, not untouched external validation."
+}

@@ -45,13 +45,13 @@ def validate_dataset_structure(data_root: Path = DATA_ROOT) -> dict[str, dict[st
     """
     if not data_root.exists():
         message = (
-            f"Veri seti klasörü bulunamadı: {data_root}\n"
-            "Lütfen Chest X-Ray Images (Pneumonia) veri setini manuel indirip zipten çıkarın "
-            "ve `chest_xray` klasörünü `data/raw/chest_xray` konumuna yerleştirin."
+            f"Dataset directory not found: {data_root}\n"
+            "Download and extract the Chest X-Ray Images (Pneumonia) dataset manually "
+            "and place the `chest_xray` directory at `data/raw/chest_xray`."
         )
         raise DatasetReadinessError(message)
     if not data_root.is_dir():
-        message = f"Beklenen veri seti yolu bir klasör olmalı, ancak dosya bulundu: {data_root}"
+        message = f"The dataset path must be a directory, but a file was found: {data_root}"
         raise DatasetReadinessError(message)
 
     summary: dict[str, dict[str, int]] = {}
@@ -79,9 +79,9 @@ def validate_dataset_structure(data_root: Path = DATA_ROOT) -> dict[str, dict[st
     if missing_paths:
         formatted_paths = "\n".join(f"- {path}" for path in missing_paths)
         message = (
-            "Veri seti klasör yapısı eksik. Aşağıdaki klasörler bulunamadı:\n"
+            "The dataset directory structure is incomplete. Missing directories:\n"
             f"{formatted_paths}\n\n"
-            "Beklenen yapı: data/raw/chest_xray/{train,val,test}/{NORMAL,PNEUMONIA}"
+            "Expected structure: data/raw/chest_xray/{train,val,test}/{NORMAL,PNEUMONIA}"
         )
         raise DatasetReadinessError(message)
 
@@ -89,9 +89,9 @@ def validate_dataset_structure(data_root: Path = DATA_ROOT) -> dict[str, dict[st
         formatted_paths = "\n".join(f"- {path}" for path in empty_classes)
         supported_extensions = ", ".join(sorted(SUPPORTED_EXTENSIONS))
         message = (
-            "Bazı sınıf klasörlerinde desteklenen görüntü bulunamadı:\n"
+            "Some class directories contain no supported images:\n"
             f"{formatted_paths}\n\n"
-            f"Desteklenen uzantılar: {supported_extensions}"
+            f"Supported extensions: {supported_extensions}"
         )
         raise DatasetReadinessError(message)
 
@@ -104,14 +104,14 @@ def print_summary(summary: dict[str, dict[str, int]]) -> None:
     Args:
         summary: Nested mapping of split and class names to image counts.
     """
-    print("Veri seti klasör yapısı hazır.")
-    print(f"Kök klasör: {DATA_ROOT}")
+    print("The dataset directory structure is ready.")
+    print(f"Root directory: {DATA_ROOT}")
     for split in EXPECTED_SPLITS:
         normal_count = summary[split]["NORMAL"]
         pneumonia_count = summary[split]["PNEUMONIA"]
         total_count = normal_count + pneumonia_count
         print(
-            f"- {split}: NORMAL={normal_count}, PNEUMONIA={pneumonia_count}, toplam={total_count}"
+            f"- {split}: NORMAL={normal_count}, PNEUMONIA={pneumonia_count}, total={total_count}"
         )
 
 
@@ -124,7 +124,7 @@ def main() -> int:
     try:
         summary = validate_dataset_structure(DATA_ROOT)
     except DatasetReadinessError as error:
-        print(f"HATA: {error}", file=sys.stderr)
+        print(f"ERROR: {error}", file=sys.stderr)
         return 1
 
     print_summary(summary)

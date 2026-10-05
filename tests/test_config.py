@@ -9,10 +9,12 @@ def test_load_config_reads_default_project_configuration() -> None:
 
     assert isinstance(config, ProjectConfig)
     assert config.paths.data_root == Path("data/raw/chest_xray")
-    assert config.data.image_size == 256
+    assert config.data.image_size == 224
     assert config.data.batch_size == 24
     assert config.data.use_stratified_validation_split is True
-    assert config.data.validation_split_fraction == 0.15
+    assert config.data.use_group_disjoint_split is True
+    assert config.data.validation_split_fraction == 0.20
+    assert config.paths.processed_data_dir == Path("data/processed/clean_v1")
     assert config.training.epochs >= 1
     assert config.training.learning_rate > 0.0
     assert config.model.num_classes == 2

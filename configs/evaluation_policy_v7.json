@@ -1,0 +1,21 @@
+{
+  "registered_at_utc": "2026-09-15T22:31:26.739526+00:00",
+  "hypothesis": "384px inputs preserve subtle structures lost at 224px; compare otherwise same training recipe.",
+  "candidate": "models/clean_v7/resnet18_clahe384",
+  "incumbent": "models/clean_v3/resnet18_clahe",
+  "recipe": {
+    "model": "resnet18",
+    "initialization": "ImageNet",
+    "size": 384,
+    "batch_size": 24,
+    "preprocessing": "clahe",
+    "augmentation": "mild",
+    "seed": 42,
+    "lr": 0.0005,
+    "epochs": 16,
+    "patience": 5
+  },
+  "selection": "Minimum validation CE checkpoint; compare validation specificity at recall >=0.98 then F1",
+  "test_policy": "Only test locked winner; incumbent win reuses previous result. No external re-evaluation planned.",
+  "limitations": "Legacy and RSNA benchmark results already observed. This is exploratory development, not a new untouched test."
+}

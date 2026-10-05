@@ -1,18 +1,20 @@
 paths:
   data_root: data/raw/chest_xray
-  processed_data_dir: data/processed
+  processed_data_dir: data/processed/clean_v1
   reports_dir: reports
   figures_dir: reports/figures
   metrics_dir: reports/metrics
-  model_dir: models
-  best_model_path: models/best_model.pt
+  model_dir: models/legacy_recipe_runs
+  best_model_path: models/clean_v3/selected_matched98/best_model.pt
 data:
-  image_size: 256
+  image_size: 224
   batch_size: 24
   num_workers: 2
   pin_memory: true
   use_stratified_validation_split: true
-  validation_split_fraction: 0.15
+  use_group_disjoint_split: true
+  split_seed: 20260915
+  validation_split_fraction: 0.20
 training:
   epochs: 8
   learning_rate: 0.0003

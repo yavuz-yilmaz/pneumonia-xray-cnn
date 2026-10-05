@@ -1,0 +1,67 @@
+{
+  "source_page": "https://nihcc.app.box.com/v/ChestXray-NIHCC/folder/37178474737",
+  "links_source": "https://nihcc.app.box.com/v/ChestXray-NIHCC/file/371647823217",
+  "links_file_sha256": "0d9379251997359acc8a8c09824293df76b5218de9d0449c0f66ac2cdfc774d4",
+  "archives": [
+    {
+      "name": "images_001.tar.gz",
+      "url": "https://nihcc.box.com/shared/static/vfk49d74nhbxq3nqjg0900w5nvkorp5c.gz",
+      "expected_bytes": 2008470987
+    },
+    {
+      "name": "images_002.tar.gz",
+      "url": "https://nihcc.box.com/shared/static/i28rlmbvmfjbl8p2n3ril0pptcmcu9d1.gz",
+      "expected_bytes": 3952623504
+    },
+    {
+      "name": "images_003.tar.gz",
+      "url": "https://nihcc.box.com/shared/static/f1t00wrtdk94satdfb9olcolqx20z2jp.gz",
+      "expected_bytes": 3929234850
+    },
+    {
+      "name": "images_004.tar.gz",
+      "url": "https://nihcc.box.com/shared/static/0aowwzs5lhjrceb3qp67ahp0rd1l1etg.gz",
+      "expected_bytes": 3838903983
+    },
+    {
+      "name": "images_005.tar.gz",
+      "url": "https://nihcc.box.com/shared/static/v5e3goj22zr6h8tzualxfsqlqaygfbsn.gz",
+      "expected_bytes": 3935496531
+    },
+    {
+      "name": "images_006.tar.gz",
+      "url": "https://nihcc.box.com/shared/static/asi7ikud9jwnkrnkj99jnpfkjdes7l6l.gz",
+      "expected_bytes": 3986301172
+    },
+    {
+      "name": "images_007.tar.gz",
+      "url": "https://nihcc.box.com/shared/static/jn1b4mw4n6lnh74ovmcjb8y48h8xj07n.gz",
+      "expected_bytes": 4016328426
+    },
+    {
+      "name": "images_008.tar.gz",
+      "url": "https://nihcc.box.com/shared/static/tvpxmn7qyrgl0w8wfh9kqfjskv6nmm1j.gz",
+      "expected_bytes": 4018347353
+    },
+    {
+      "name": "images_009.tar.gz",
+      "url": "https://nihcc.box.com/shared/static/upyy3ml7qdumlgk2rfcvlb9k6gvqq2pj.gz",
+      "expected_bytes": 4111327929
+    },
+    {
+      "name": "images_010.tar.gz",
+      "url": "https://nihcc.box.com/shared/static/l6nilvfa9cg3s28tqv1qc1olm3gnz54p.gz",
+      "expected_bytes": 4181556296
+    },
+    {
+      "name": "images_011.tar.gz",
+      "url": "https://nihcc.box.com/shared/static/hhq8fkdgvcari67vfhs7ppg2w6ni4jze.gz",
+      "expected_bytes": 4187084020
+    },
+    {
+      "name": "images_012.tar.gz",
+      "url": "https://nihcc.box.com/shared/static/ioqwiy20ihqwyr8pf4c24eazhh281pbu.gz",
+      "expected_bytes": 2914187733
+    }
+  ]
+}

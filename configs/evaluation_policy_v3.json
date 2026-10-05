@@ -1,0 +1,14 @@
+{
+  "recorded_at_utc": "2026-09-15 21:22:09 UTC",
+  "third_experiment_test_report_existed_at_registration": false,
+  "primary_minimum_validation_recall": 0.98,
+  "sensitivity_minimum_validation_recall": 0.99,
+  "primary_selection": "maximum validation specificity at recall >= 0.98; break ties by validation F1",
+  "justification": "The existing deployed baseline's documented threshold was selected with validation recall above 0.98 (docs/evaluation_summary.md lines 16-18). Previous clean experiments used a stricter 0.99 constraint, so the primary v3 comparison matches the historical baseline policy.",
+  "candidates": [
+    "models/clean_v3/xrv_clahe_finetuned",
+    "models/clean_v3/resnet18_clahe"
+  ],
+  "reporting": "Report both policies regardless of which has better legacy-test results. Use the 0.98 policy as primary; never choose a threshold by legacy-test optimization.",
+  "prior_test_exposure": "The original benchmark and clean_v1/clean_v2 legacy-test outcomes have been inspected. Neither v3 operating policy is claimed to produce untouched external validation."
+}

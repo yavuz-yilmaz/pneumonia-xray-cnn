@@ -115,7 +115,7 @@ def test_dataset_rejects_inconsistent_label_mapping(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    with pytest.raises(XRayDatasetError, match="Label mapping tutarsız"):
+    with pytest.raises(XRayDatasetError, match="Inconsistent label mapping"):
         ChestXRayDataset(manifest_path, transform=build_eval_transforms(image_size=32))
 
 

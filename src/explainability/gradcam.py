@@ -80,12 +80,12 @@ class GradCam:
         """
         if image_tensor.ndim != 3:
             message = (
-                "Grad-CAM input tensor shape `(3, H, W)` olmalı; "
-                f"alınan shape: {tuple(image_tensor.shape)}"
+                "The Grad-CAM input tensor must have shape `(3, H, W)`; "
+                f"received shape: {tuple(image_tensor.shape)}"
             )
             raise GradCamError(message)
         if not 0.0 <= overlay_alpha <= 1.0:
-            message = f"overlay_alpha [0.0, 1.0] aralığında olmalı; alınan değer: {overlay_alpha}"
+            message = f"overlay_alpha must be in [0.0, 1.0]; received value: {overlay_alpha}"
             raise ValueError(message)
 
         self.model.eval()
@@ -103,14 +103,14 @@ class GradCam:
         )
 
         if class_id < 0 or class_id >= logits.shape[1]:
-            message = f"Geçersiz target_class_id={class_id}; model çıktı boyutu: {logits.shape[1]}"
+            message = f"Invalid target_class_id={class_id}; model output size: {logits.shape[1]}"
             raise GradCamError(message)
 
         score = logits[:, class_id].sum()
         score.backward()
 
         if self.activations is None or self.gradients is None:
-            message = "Grad-CAM için aktivasyon veya gradyan yakalanamadı."
+            message = "Could not capture activations or gradients for Grad-CAM."
             raise GradCamError(message)
 
         heatmap = self._build_heatmap(
@@ -137,7 +137,7 @@ class GradCam:
         output: Tensor,
     ) -> None:
         if not isinstance(output, Tensor):
-            message = f"Grad-CAM hedef katmanı Tensor yerine {type(output)} döndürdü."
+            message = f"The Grad-CAM target layer returned {type(output)} instead of a Tensor."
             raise GradCamError(message)
         self.activations = output
         output.register_hook(self._capture_gradients)
@@ -186,23 +186,28 @@ def resolve_target_layer(model: nn.Module, model_name: str) -> nn.Module:
     normalized_model_name = model_name.strip().lower()
     if normalized_model_name == "resnet18":
         if not hasattr(model, "layer4"):
-            message = "ResNet18 modeli Grad-CAM için beklenen layer4 bloğunu içermiyor."
+            message = "The ResNet18 model is missing the layer4 block required for Grad-CAM."
             raise GradCamError(message)
         return model.layer4[-1]
 
     if normalized_model_name == "simple_cnn":
         if not hasattr(model, "features"):
-            message = "SimpleCNN modeli Grad-CAM için features bloğunu içermiyor."
+            message = "The SimpleCNN model is missing the features block required for Grad-CAM."
             raise GradCamError(message)
         return model.features[-1]
 
-    if normalized_model_name in {"efficientnet_b0", "mobilenet_v3_small"}:
+    if normalized_model_name in {
+        "efficientnet_b0",
+        "efficientnet_v2_s",
+        "mobilenet_v3_small",
+        "xrv_densenet121",
+    }:
         if not hasattr(model, "features"):
-            message = f"{model_name} modeli Grad-CAM için features bloğunu içermiyor."
+            message = f"The {model_name} model is missing the features block required for Grad-CAM."
             raise GradCamError(message)
         return model.features[-1]
 
-    message = f"Grad-CAM için desteklenmeyen model adı: {model_name}"
+    message = f"Unsupported model name for Grad-CAM: {model_name}"
     raise GradCamError(message)
 
 
@@ -226,7 +231,7 @@ def create_heatmap_overlay(
         ValueError: If the heatmap is not two-dimensional.
     """
     if heatmap.ndim != 2:
-        message = f"Heatmap iki boyutlu olmalı; alınan shape: {heatmap.shape}"
+        message = f"The heatmap must be two-dimensional; received shape: {heatmap.shape}"
         raise ValueError(message)
 
     original_array = np.asarray(original_image.convert("RGB"), dtype=np.float32) / 255.0

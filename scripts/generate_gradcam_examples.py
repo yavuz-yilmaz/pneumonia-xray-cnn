@@ -10,15 +10,18 @@ import matplotlib.pyplot as plt
 import torch
 from PIL import Image, UnidentifiedImageError
 from src.core.config import ConfigFileError, ProjectConfig, load_and_prepare_config
-from src.data.dataloader import get_manifest_paths, require_manifest_files
+from src.data.dataloader import get_manifest_paths
 from src.data.dataset import ID_TO_LABEL, LABEL_TO_ID, ChestXRayDataset
-from src.data.transforms import build_eval_transforms
+from src.data.image_preparation import CheckpointImageTransform
 from src.evaluation.evaluate import load_checkpoint_model
 from src.explainability.gradcam import GradCam, resolve_target_layer
+from src.inference.predict import DEFAULT_PNEUMONIA_THRESHOLD
 
 MAX_CORRECT_EXAMPLES_PER_CLASS = 4
 MAX_MISCLASSIFIED_EXAMPLES = 6
-MEDICAL_WARNING = "Bu proje eğitim amaçlıdır; çıktılar tıbbi teşhis amacıyla kullanılmamalıdır."
+MEDICAL_WARNING = (
+    "This project is for educational purposes; its outputs must not be used for medical diagnosis."
+)
 
 
 @dataclass(frozen=True)
@@ -68,10 +71,10 @@ def resolve_gradcam_device(config: ProjectConfig) -> torch.device:
     """
     requested_device = config.training.device.lower()
     if requested_device == "cuda" and not torch.cuda.is_available():
-        print("Config device='cuda' seçilmiş ancak CUDA yok; Grad-CAM CPU üzerinde çalıştırılıyor.")
+        print("Config device='cuda', but CUDA is unavailable; running Grad-CAM on CPU.")
         return torch.device("cpu")
     if requested_device == "mps" and not torch.backends.mps.is_available():
-        print("Config device='mps' seçilmiş ancak MPS yok; Grad-CAM CPU üzerinde çalıştırılıyor.")
+        print("Config device='mps' was selected, but MPS is unavailable; running Grad-CAM on CPU.")
         return torch.device("cpu")
     if requested_device == "auto":
         if torch.cuda.is_available():
@@ -87,6 +90,7 @@ def collect_gradcam_candidates(
     model: torch.nn.Module,
     dataset: ChestXRayDataset,
     device: torch.device,
+    decision_threshold: float = DEFAULT_PNEUMONIA_THRESHOLD,
 ) -> list[GradCamCandidate]:
     """Run test-set inference and collect samples eligible for Grad-CAM.
 
@@ -108,7 +112,9 @@ def collect_gradcam_candidates(
             image_tensor, label_id = dataset[dataset_index]
             logits = model(image_tensor.unsqueeze(0).to(device))
             probabilities = torch.softmax(logits, dim=1).squeeze(0).detach().cpu()
-            predicted_label_id = int(torch.argmax(probabilities).item())
+            predicted_label_id = int(
+                probabilities[LABEL_TO_ID["PNEUMONIA"]].item() >= decision_threshold
+            )
             candidates.append(
                 GradCamCandidate(
                     dataset_index=dataset_index,
@@ -177,7 +183,7 @@ def save_gradcam_figure(
         with Image.open(sample.filepath) as image:
             original_image = image.convert("RGB")
     except (OSError, UnidentifiedImageError) as error:
-        message = f"Grad-CAM kaynak görseli okunamadı: {sample.filepath}. Hata: {error}"
+        message = f"Could not read the Grad-CAM source image: {sample.filepath}. Error: {error}"
         raise OSError(message) from error
 
     image_tensor, _label_id = dataset[candidate.dataset_index]
@@ -218,7 +224,6 @@ def generate_gradcam_examples(config: ProjectConfig) -> GradCamOutputs:
         XRayDatasetError: If test manifest data is unavailable.
         GradCamError: If Grad-CAM target layer resolution or generation fails.
     """
-    require_manifest_files(config.paths.processed_data_dir)
     device = resolve_gradcam_device(config)
     checkpoint_bundle = load_checkpoint_model(config.paths.best_model_path, device)
     model_name = str(checkpoint_bundle.metadata["model_name"])
@@ -226,12 +231,15 @@ def generate_gradcam_examples(config: ProjectConfig) -> GradCamOutputs:
     test_manifest_path = get_manifest_paths(config.paths.processed_data_dir)["test"]
     test_dataset = ChestXRayDataset(
         test_manifest_path,
-        transform=build_eval_transforms(int(checkpoint_bundle.metadata["image_size"])),
+        transform=CheckpointImageTransform.from_metadata(checkpoint_bundle.metadata),
     )
     candidates = collect_gradcam_candidates(
         model=checkpoint_bundle.model,
         dataset=test_dataset,
         device=device,
+        decision_threshold=float(
+            checkpoint_bundle.metadata.get("decision_threshold", DEFAULT_PNEUMONIA_THRESHOLD)
+        ),
     )
     selected_examples = select_examples(candidates)
 
@@ -289,64 +297,64 @@ def save_gradcam_summary(
         OSError: If the summary file cannot be written.
     """
     output_lines = (
-        "\n".join(f"- `{path}`" for path in outputs) if outputs else "- Görsel üretilemedi."
+        "\n".join(f"- `{path}`" for path in outputs) if outputs else "- No figures generated."
     )
     correct_normal_count = len(selected_examples["correct_normal"])
     correct_pneumonia_count = len(selected_examples["correct_pneumonia"])
     misclassified_count = len(selected_examples["misclassified"])
     misclassified_note = (
-        f"{misclassified_count} hatalı sınıflandırılmış örnek için görsel üretildi."
+        f"Figures were generated for {misclassified_count} misclassified samples."
         if misclassified_count
-        else "Test seçiminde hatalı sınıflandırılmış örnek bulunmadığı için bu grup boş kaldı."
+        else "This group is empty because no selected test samples were misclassified."
     )
-    summary = f"""# Grad-CAM Açıklanabilirlik Özeti
+    summary = f"""# Grad-CAM Explainability Summary
 
-## Grad-CAM Nedir?
+## What Is Grad-CAM?
 
-Grad-CAM, bir CNN modelinin belirli bir sınıf kararını verirken son evrişimsel özellik
-haritalarında hangi bölgelerin daha etkili olduğunu yaklaşık olarak görselleştiren bir
-açıklanabilirlik yöntemidir. Üretilen ısı haritası, modelin karar skoruna katkısı yüksek
-olan bölgeleri sıcak renklerle gösterir.
+Grad-CAM is an explainability method that approximates which regions in a CNN's
+final convolutional feature maps contribute most to a particular class decision.
+The heatmap highlights regions with a higher contribution to the model's class
+score using warm colors.
 
-## Bu Projede Nasıl Kullanıldı?
+## How Was It Used in This Project?
 
-- Açıklanan model: `{model_name}`
-- Çalıştırma cihazı: `{device}`
-- Hedef katman: seçilen mimarinin son evrişimsel özellik katmanı
-- Açıklanan sınıf: modelin tahmin ettiği sınıf
-- Görsel formatı: orijinal röntgen ve Grad-CAM heatmap overlay
+- Explained model: `{model_name}`
+- Runtime device: `{device}`
+- Target layer: the selected architecture's final convolutional feature layer
+- Explained class: the model's predicted class
+- Figure format: original X-ray and Grad-CAM heatmap overlay
 
-Seçilen örnekler:
+Selected samples:
 
-- Doğru sınıflandırılmış NORMAL: `{correct_normal_count}`
-- Doğru sınıflandırılmış PNEUMONIA: `{correct_pneumonia_count}`
-- Hatalı sınıflandırılmış örnek: `{misclassified_count}`
+- Correctly classified NORMAL: `{correct_normal_count}`
+- Correctly classified PNEUMONIA: `{correct_pneumonia_count}`
+- Misclassified samples: `{misclassified_count}`
 
-## Model Hangi Alanlara Odaklanıyor Gibi Görünüyor?
+## Which Regions Does the Model Appear to Focus On?
 
-Üretilen overlay görselleri, modelin kararını görüntünün belirli akciğer bölgelerinde
-yoğunlaşan aktivasyonlarla ilişkilendirdiğini incelemek için kullanılabilir. Özellikle
-PNEUMONIA tahminlerinde sıcak bölgelerin akciğer alanları üzerinde kalıp kalmadığı kontrol
-edilmelidir. Eğer ısı haritası görüntü kenarları, yazılar veya akciğer dışı alanlara
-yoğunlaşıyorsa bu durum modelin klinik olarak anlamlı olmayan ipuçlarını öğrenmiş
-olabileceğine işaret eder.
+The overlays can help examine whether activations associated with the model's
+decision concentrate within lung regions. For PNEUMONIA predictions, check whether
+the highlighted regions remain over the lungs. Heatmaps concentrated on image
+borders, text, or areas outside the lungs may indicate that the model has learned
+cues with no clinical relevance.
 
-## Sınırlılıklar
+## Limitations
 
-Grad-CAM nedensel bir açıklama değildir; yalnızca modelin son evrişimsel özellikleri
-üzerinden yaklaşık bir görsel yorum sağlar. Isı haritası yüksek çözünürlüklü patoloji
-lokalizasyonu olarak değerlendirilmemelidir. Bu proje eğitim amaçlıdır ve üretilen
-tahminler veya açıklamalar tıbbi teşhis amacıyla kullanılmamalıdır.
+Grad-CAM is not a causal explanation; it provides an approximate visual
+interpretation based on the model's final convolutional features. The heatmap
+must not be treated as high-resolution pathology localization. This project is
+for educational purposes; predictions and explanations must not be used for
+medical diagnosis.
 
-## Üretilen Görseller
+## Generated Figures
 
 {output_lines}
 
-## Not
+## Note
 
 {misclassified_note}
 
-## Uyarı
+## Warning
 
 {MEDICAL_WARNING}
 """
@@ -361,12 +369,12 @@ def parse_args() -> argparse.Namespace:
         Parsed CLI arguments.
     """
     parser = argparse.ArgumentParser(
-        description="Eğitilmiş model için Grad-CAM açıklanabilirlik görselleri üret."
+        description="Generate Grad-CAM explainability figures for a trained model."
     )
     parser.add_argument(
         "--config",
         default="configs/config.yaml",
-        help="YAML config dosyası yolu.",
+        help="Path to the YAML configuration file.",
     )
     return parser.parse_args()
 
@@ -388,7 +396,7 @@ def main() -> None:
         raise
 
     outputs = generate_gradcam_examples(config)
-    print("Grad-CAM görselleri üretildi.")
+    print("Grad-CAM figures generated.")
     print(f"Correct NORMAL examples: {outputs.correct_normal_count}")
     print(f"Correct PNEUMONIA examples: {outputs.correct_pneumonia_count}")
     print(f"Misclassified examples: {outputs.misclassified_count}")

@@ -75,5 +75,5 @@ def validate_image_size(image_size: int) -> None:
         ValueError: If image size is not positive.
     """
     if image_size <= 0:
-        message = f"image_size pozitif bir tam sayı olmalı; alınan değer: {image_size}"
+        message = f"image_size must be a positive integer; received: {image_size}"
         raise ValueError(message)
