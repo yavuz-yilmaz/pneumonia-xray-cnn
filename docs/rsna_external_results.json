@@ -1,0 +1,113 @@
+{
+  "target": "RSNA lung opacity versus normal; not confirmed pneumonia",
+  "results": {
+    "baseline": {
+      "checkpoint_sha256": "6dd50d60330b52664236c74a45696a04770723e91c5dbea3715e322709a995d7",
+      "metrics": {
+        "threshold": 0.7,
+        "sample_count": 1000,
+        "accuracy": 0.758,
+        "balanced_accuracy": 0.758,
+        "precision": 0.7171717171717171,
+        "recall": 0.852,
+        "specificity": 0.664,
+        "f1": 0.7787934186471663,
+        "roc_auc": 0.8480920000000001,
+        "average_precision": 0.842577493799057,
+        "confusion_matrix": [
+          [
+            332,
+            168
+          ],
+          [
+            74,
+            426
+          ]
+        ]
+      },
+      "confidence_intervals_95": {
+        "accuracy": [
+          0.7309749999999999,
+          0.783
+        ],
+        "precision": [
+          0.6809891264491016,
+          0.7520152585314988
+        ],
+        "recall": [
+          0.8207146671047768,
+          0.8846172962226639
+        ],
+        "specificity": [
+          0.6223070232659274,
+          0.7034216432865732
+        ],
+        "f1": [
+          0.7514445382852003,
+          0.8047717788136236
+        ],
+        "roc_auc": [
+          0.8252736712286391,
+          0.8706605627855023
+        ]
+      }
+    },
+    "selected": {
+      "checkpoint_sha256": "da5c58d36865cc01d8df1dce5c358dac2a06b0b0b4981115bb7e35d806e2be9b",
+      "metrics": {
+        "threshold": 0.8820025324821472,
+        "sample_count": 1000,
+        "accuracy": 0.838,
+        "balanced_accuracy": 0.838,
+        "precision": 0.8491735537190083,
+        "recall": 0.822,
+        "specificity": 0.854,
+        "f1": 0.8353658536585366,
+        "roc_auc": 0.9088499999999999,
+        "average_precision": 0.907762443065421,
+        "confusion_matrix": [
+          [
+            427,
+            73
+          ],
+          [
+            89,
+            411
+          ]
+        ]
+      },
+      "confidence_intervals_95": {
+        "accuracy": [
+          0.813,
+          0.86
+        ],
+        "precision": [
+          0.8172467638784612,
+          0.8779155592759235
+        ],
+        "recall": [
+          0.789054247359155,
+          0.8562753036437247
+        ],
+        "specificity": [
+          0.8205645161290323,
+          0.8853765233860342
+        ],
+        "f1": [
+          0.808852010964687,
+          0.8597626986466239
+        ],
+        "roc_auc": [
+          0.889886318940834,
+          0.9250817125514903
+        ]
+      }
+    }
+  },
+  "limitations": [
+    "Adult radiographic lung opacity is not equivalent to pediatric clinical pneumonia.",
+    "Balanced case-control sampling does not estimate real-population precision or accuracy.",
+    "Other abnormal images are excluded; this is not a clinical triage cohort.",
+    "TorchXRayVision all-weights models include NIH/RSNA pretraining and must not be claimed independent on this cohort."
+  ]
+}

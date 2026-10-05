@@ -1,340 +1,254 @@
-# CNN ile Akciğer Röntgeninden Zatürre Tespiti
+# Pneumonia X-Ray CNN
 
-## Proje Amacı
+[![Python 3.10+](docs/figures/badge_python.svg)](pyproject.toml)
+[![PyTorch 2.4+](docs/figures/badge_pytorch.svg)](https://pytorch.org/)
+[![Code license: MIT](docs/figures/badge_license.svg)](LICENSE)
 
-Bu proje, akciğer röntgeni görüntülerinden `NORMAL` ve `PNEUMONIA` sınıflarını ayırt eden CNN tabanlı bir sınıflandırma sistemi geliştirmeyi amaçlar. Proje; veri hazırlama, analiz, model eğitimi, değerlendirme, açıklanabilirlik, API ve basit kullanıcı arayüzü adımlarını kapsayacak şekilde yapılandırılmıştır.
+A research project that classifies chest X-rays as `NORMAL` or `PNEUMONIA`.
+It combines data auditing, model training, and external evaluation with
+single-image prediction, a FastAPI service, and a Streamlit demo.
+**This is not a medical diagnostic tool.**
 
-## Problem Tanımı
+## Workflow
 
-Zatürre, akciğer dokusunu etkileyen ciddi bir enfeksiyondur. Röntgen görüntülerinde zatürre bulgularının otomatik olarak sınıflandırılması, eğitim ve karar destek senaryoları için yararlı bir bilgisayarlı görü problemidir. Bu projede hedef, tek bir göğüs röntgeni görüntüsünün `NORMAL` veya `PNEUMONIA` sınıfına ait olduğunu tahmin etmektir.
+```mermaid
+flowchart LR
+    A["Raw data"] --> B["Group and duplicate<br/>audit"]
+    B --> C["Train + validation<br/>Training and selection"]
+    C --> D["Locked model<br/>and decision threshold"]
+    D --> E["CLI / API / demo"]
+    B --> F["Reserved test"]
+    F --> G["Final evaluation"]
+    D --> G
 
-## Kullanılacak Veri Seti
-
-Veri seti kullanıcı tarafından manuel olarak indirilecektir. Proje veri setini otomatik indirmez ve Kaggle API bilgisi istemez.
-
-Beklenen ham veri yapısı:
-
-```text
-data/raw/chest_xray/
-├── train/
-│   ├── NORMAL/
-│   └── PNEUMONIA/
-├── val/
-│   ├── NORMAL/
-│   └── PNEUMONIA/
-└── test/
-    ├── NORMAL/
-    └── PNEUMONIA/
+    classDef data fill:#eff6ff,stroke:#60a5fa,color:#0f172a
+    classDef model fill:#f5f3ff,stroke:#a78bfa,color:#0f172a
+    classDef serve fill:#ecfdf5,stroke:#34d399,color:#0f172a
+    classDef evaluation fill:#fff7ed,stroke:#fb923c,color:#0f172a
+    class A,B,F data
+    class C,D model
+    class E serve
+    class G evaluation
 ```
 
-Kullanılacak veri seti: Chest X-Ray Images (Pneumonia).
+The model and threshold are selected on validation data; the test is reserved
+for the final evaluation.
 
-## Kullanılacak Yöntemler
+JPEG/JPG/PNG inputs produce a class label and model probabilities.
+[Command-line prediction](#4-predict-a-single-image) returns JSON;
+the [web demo](#5-api-and-demo) supports image upload and result display.
 
-- Görüntü ön işleme ve standartlaştırma
-- Veri artırma
-- Baseline CNN modeli
-- Transfer learning ile ResNet18, EfficientNet-B0 veya MobileNetV3
-- Accuracy, precision, recall, F1-score ve ROC-AUC metrikleri
-- Confusion matrix ve hata analizi
-- Grad-CAM ile görsel açıklanabilirlik
-- FastAPI tabanlı tahmin servisi
-- Basit web arayüzü
+## Model and results
 
-## Kurulum
+The main model is **ResNet18 initialized with ImageNet weights**, using
+**224 × 224 inputs, CLAHE**, and a decision threshold of **0.88200253**.
+Results on the historical 624-image Kermany test set:
 
-Python 3.10 veya daha yeni bir sürüm kullanılması gerekir.
+| Metric | Value |
+|---|---:|
+| Accuracy | 89.58% |
+| Precision | 86.03% |
+| Recall | 99.49% |
+| F1 | 92.27% |
+| ROC-AUC | 97.92% |
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -e ".[dev]"
-```
+False positives: **63**; false negatives: **2**.
+This test set was observed in earlier experiments; these results are not
+independent clinical validation. Generalization across data sources is limited;
+[external evaluation results](#experiments-and-development) are reported separately.
 
-Windows PowerShell için sanal ortam etkinleştirme:
+- [Short results report and limitations](docs/project_report.md)
+- [Detailed results and confidence intervals](docs/clean_v3_matched98_results.md)
+- [Experiment and dataset research index](docs/README.md)
+- [Fresh installation verification](docs/reproduction_check.md)
+
+**The repository contains code and reports, without datasets or trained checkpoints.**
+The current local model is at `models/clean_v3/selected_matched98/best_model.pt`.
+For a fresh clone, follow the workflow below to train your own checkpoint.
+Retraining does not guarantee the historical model's hash or identical metrics.
+
+## 1. Installation
+
+Run the commands from the repository root. A fresh installation was verified on
+Windows / Python 3.12.10. The package requires Python ≥3.10; other platforms
+and versions have not been separately verified.
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
 
-Makefile kullanan ortamlarda aynı kurulum şu komutla yapılabilir:
+On Linux/macOS, activate with `source .venv/bin/activate`.
+A GPU is optional; training uses a GPU when CUDA is available, otherwise the CPU.
+PyTorch packages and datasets can be large. Before the first installation or
+training run, check downloads in the [data and weights guide](docs/data_and_weights.md).
 
-```bash
-make install
+## 2. Acquire and prepare the data
+
+The main workflow uses Kermany's **Chest X-Ray Images (Pneumonia)** dataset.
+Download sources, versions, and attribution are in the [data guide](docs/data_and_weights.md).
+Extract only the `chest_xray` directory into this structure:
+
+```text
+data/raw/chest_xray/
+├── train/{NORMAL,PNEUMONIA}/
+├── val/{NORMAL,PNEUMONIA}/
+└── test/{NORMAL,PNEUMONIA}/
 ```
 
-## Çalıştırma Komutları
-
-Projedeki ana işler `Makefile` üzerinden çalıştırılır:
-
-```bash
-make install
-make lint
-make test
-make eda
-make train
-make evaluate
-make api
-make ui
-```
-
-Merkezi proje ayarları `configs/config.yaml` dosyasındadır. Bu dosyada veri yolları,
-görüntü boyutu, batch size, epoch sayısı, learning rate, model adı, seed ve cihaz
-seçimi tanımlanır.
-
-Doğrudan Python modül komutları:
-
-```bash
-python -m pip install --upgrade pip; python -m pip install -e ".[dev]"
-python -m ruff check .
-python -m pytest
-python -m src.eda.run_eda --config configs/config.yaml
-python -m src.training.train_baseline --config configs/config.yaml
-python -m src.training.train --config configs/config.yaml
-python -m src.evaluation.evaluate --config configs/config.yaml
-python scripts/generate_gradcam_examples.py --config configs/config.yaml
-python scripts/predict_image.py --image data/raw/chest_xray/test/NORMAL/IM-0003-0001.jpeg --model models/best_model.pt
-python -m uvicorn app.api.main:app --host 0.0.0.0 --port 8000
-python -m streamlit run app/ui/streamlit_app.py
-```
-
-## Veri Setini Manuel Yerleştirme ve Hazırlama
-
-Bu proje veri setini otomatik indirmez. Kaggle API, Hugging Face veya başka bir
-otomatik indirme akışı kullanılmaz. Veri seti kullanıcı tarafından manuel olarak
-yerleştirilmelidir.
-
-1. Chest X-Ray Images (Pneumonia) veri setini indir.
-2. Zip dosyasını aç.
-3. Açılan `chest_xray` klasörünü proje içinde `data/raw/chest_xray` konumuna koy.
-4. Klasör yapısını kontrol et:
-
-```bash
+```powershell
 python scripts/check_dataset_ready.py
-```
-
-5. Bozuk görsel ve sınıf dağılımı kontrolünü çalıştır:
-
-```bash
-python -m src.data.validate_dataset --config configs/config.yaml
-```
-
-6. Eğitim için standart manifest dosyalarını üret:
-
-```bash
 python -m src.data.standardize_dataset --config configs/config.yaml
 ```
 
-Bu komutlar başarılı olduğunda şu çıktılar oluşur:
+The default group-audited preparation creates train/val/test manifests,
+excluded records, and `split_audit.json` under `data/processed/clean_v1`.
+The reference data retains **3,802 training / 951 validation / 624 test** images;
+479 development images are excluded, while raw files are preserved.
+Keep the original filenames: they are used to infer patient groups.
+Prepare the data once and reuse the audited manifests for later experiments.
 
-- `reports/metrics/dataset_summary.json`
-- `reports/metrics/corrupted_images.json`
-- `reports/metrics/stratified_validation_split_summary.json`
-- `data/processed/train_manifest.csv`
-- `data/processed/val_manifest.csv`
-- `data/processed/test_manifest.csv`
-- `data/processed/raw_val_manifest.csv`
+## 3. Train and select on validation data
 
-Varsayılan yapılandırmada `configs/config.yaml` içindeki
-`data.use_stratified_validation_split: true` ayarı kullanılır. Bu ayar, ham veri
-setindeki çok küçük `val` klasörünü eğitim sırasında model seçimi için kullanmaz.
-Bunun yerine ham `train` klasörü sınıf oranları korunarak yeniden bölünür:
-
-- `data/processed/train_manifest.csv`: raw `train` içinden ayrılan eğitim örnekleri
-- `data/processed/val_manifest.csv`: raw `train` içinden ayrılan stratified validation örnekleri
-- `data/processed/raw_val_manifest.csv`: orijinal küçük raw `val` splitinin izlenebilir kopyası
-- `data/processed/test_manifest.csv`: raw `test` splitinin değişmeden kullanılan manifesti
-
-Bu projedeki mevcut ayarda validation oranı `0.15`, seed değeri `42` olarak
-tanımlıdır. Son üretilen manifestlerde eğitim seti `4,434`, validation seti
-`782`, test seti `624` görüntü içerir.
-
-## Eğitim
-
-Veri seti hazırlandıktan sonra baseline CNN modeli şu komutla eğitilir:
-
-```bash
-python -m src.training.train_baseline --config configs/config.yaml
-```
-
-Bu komut `SimpleCNN` mimarisini eğitir ve şu çıktıları üretir:
-
-- `models/baseline_cnn.pt`
-- `reports/metrics/baseline_history.json`
-- `reports/figures/baseline_training_curves.png`
-
-Genel eğitim giriş noktası da aynı baseline modeli varsayılan olarak çalıştırır:
-
-```bash
-python -m src.training.train --config configs/config.yaml
-```
-
-Makefile kullanan ortamlarda eğitim şu şekilde çalıştırılabilir:
-
-```bash
-make train
-```
-
-## Değerlendirme
-
-Eğitilen en iyi modelin test seti üzerindeki performansı şu komutla ölçülür:
-
-```bash
-make evaluate
-```
-
-Doğrudan Python komutu:
-
-```bash
-python -m src.evaluation.evaluate --config configs/config.yaml
-```
-
-Değerlendirme çıktıları:
-
-- `reports/metrics/test_metrics.json`
-- `reports/figures/confusion_matrix.png`
-- `reports/figures/roc_curve.png`
-- `reports/figures/precision_recall_curve.png`
-- `reports/figures/misclassified_examples.png`
-- `docs/evaluation_summary.md`
-
-## Grad-CAM Açıklanabilirlik
-
-Eğitilen en iyi modelin kararlarını görselleştirmek için Grad-CAM örnekleri şu komutla üretilir:
-
-```bash
-python scripts/generate_gradcam_examples.py --config configs/config.yaml
-```
-
-Grad-CAM çıktıları:
-
-- `reports/figures/gradcam_correct_normal_*.png`
-- `reports/figures/gradcam_correct_pneumonia_*.png`
-- `reports/figures/gradcam_misclassified_*.png`
-- `docs/gradcam_summary.md`
-
-## Tek Görüntü İçin Tahmin
-
-Eğitilmiş checkpoint ile tek bir röntgen görüntüsü için JSON formatında tahmin üretilebilir:
-
-```bash
-python scripts/predict_image.py --image data/raw/chest_xray/test/NORMAL/IM-0003-0001.jpeg --model models/best_model.pt
-```
-
-Çıktı alanları:
-
-- `predicted_label`
-- `normal_probability`
-- `pneumonia_probability`
-- `confidence`
-- `model_version`
-
-Desteklenen görüntü formatları `.jpeg`, `.jpg` ve `.png` uzantılarıdır.
-
-## API ile Tahmin
-
-FastAPI tabanlı servis `app/api/main.py` içinde yer alır. Servis başlangıçta
-`configs/config.yaml` içindeki `paths.best_model_path` değerinden modeli bir kez
-yükler ve her requestte aynı modeli kullanır.
-
-```bash
-make api
-```
-
-Doğrudan çalıştırma komutu:
-
-```bash
-python -m uvicorn app.api.main:app --host 0.0.0.0 --port 8000
-```
-
-Varsayılan checkpoint dışında bir model kullanmak için:
-
-```bash
-$env:PNEUMONIA_MODEL_PATH = "models/best_model.pt"
-python -m uvicorn app.api.main:app --host 0.0.0.0 --port 8000
-```
-
-Endpointler:
-
-- `GET /health`
-- `GET /model-info`
-- `POST /predict`
-
-Örnek tahmin isteği:
-
-```bash
-curl -X POST "http://127.0.0.1:8000/predict" \
-  -F "file=@data/raw/chest_xray/test/NORMAL/IM-0003-0001.jpeg"
-```
-
-`/predict` yanıtı şu alanları döndürür:
-
-- `predicted_label`
-- `normal_probability`
-- `pneumonia_probability`
-- `confidence`
-- `warning`
-
-API yalnızca `.jpeg`, `.jpg` ve `.png` görüntü yüklemelerini kabul eder. Yanıt
-her zaman şu uyarıyı içerir: “Bu çıktı tıbbi teşhis amacıyla kullanılmamalıdır.”
-
-## Web Arayüzü
-
-Sunum demosu için Streamlit tabanlı arayüz `app/ui/streamlit_app.py` içinde yer alır.
-Arayüz görüntü yükleme, önizleme, tahmin sonucu, `NORMAL` ve `PNEUMONIA`
-olasılıkları ile güven skorunu gösterir. Tahminler FastAPI servisine istek atılarak
-alınır.
-
-Önce API servisini başlat:
-
-```bash
-python -m uvicorn app.api.main:app --host 0.0.0.0 --port 8000
-```
-
-Ayrı bir terminalde Streamlit arayüzünü başlat:
-
-```bash
-python -m streamlit run app/ui/streamlit_app.py
-```
-
-Arayüz varsayılan olarak `http://127.0.0.1:8000` API adresini kullanır. Farklı bir
-API adresi kullanmak için `PNEUMONIA_API_URL` ortam değişkenini ayarla:
+Use a fresh output directory for each experiment:
 
 ```powershell
-$env:PNEUMONIA_API_URL = "http://127.0.0.1:8000"
+python -m src.training.train_clean --manifests data/processed/clean_v1 --model resnet18 --preprocessing clahe --cache-images --epochs 16 --lr 0.0005 --patience 5 --minimum-recall 0.98 --output models/clean_runs/resnet18_clahe
+python -m src.evaluation.evaluate_clean select --experiments models/clean_runs/resnet18_clahe --manifests data/processed/clean_v1 --minimum-recall 0.98 --output models/clean_runs/selected
+```
+
+Training verifies train/val source hashes and does not read the test manifest
+or images. The checkpoint is selected by validation loss; the decision
+threshold maximizes specificity, then F1, subject to validation recall ≥98%.
+This condition does not guarantee 98% recall on new data.
+The protocol, training history, and selection record are saved.
+
+After locking the selection, evaluate the test in a separate command:
+
+```powershell
+python -m src.evaluation.evaluate_clean test --manifests data/processed/clean_v1 --output models/clean_runs/selected
+```
+
+The selected directory contains `selection.json`, `best_model.pt`,
+`test_metrics.json`, and `test_predictions.npz`. An existing test report cannot
+be overwritten. A new output directory does not make an observed test independent
+again; do not tune the threshold or model based on its scores.
+
+## 4. Predict a single image
+
+```powershell
+python scripts/predict_image.py --model models/clean_runs/selected/best_model.pt --image data/raw/chest_xray/test/NORMAL/IM-0003-0001.jpeg
+```
+
+JPEG/JPG/PNG are supported. The JSON response contains the class label, both
+model probabilities, `confidence`, and model version. Input size, normalization,
+CLAHE, and threshold are read from the checkpoint. These probabilities are
+not calibrated clinical risk estimates.
+
+Without `--model`, the historical local checkpoint in `configs/config.yaml`
+is used; this file is absent from a fresh clone. Specify your checkpoint path explicitly.
+
+## 5. API and demo
+
+In PowerShell, select your trained model and start the API:
+
+```powershell
+$env:PNEUMONIA_MODEL_PATH = "models/clean_runs/selected/best_model.pt"
+python -m uvicorn app.api.main:app --host 127.0.0.1 --port 8000
+```
+
+Equivalent command in a POSIX shell:
+
+```bash
+PNEUMONIA_MODEL_PATH=models/clean_runs/selected/best_model.pt python -m uvicorn app.api.main:app --host 127.0.0.1 --port 8000
+```
+
+API documentation: `http://127.0.0.1:8000/docs`. Endpoints: `GET /health`,
+`GET /model-info`, and `POST /predict` (multipart `file`). `/model-info` shows
+the active threshold and preprocessing.
+
+In a separate terminal, activate the same virtual environment and run the demo:
+
+```powershell
 python -m streamlit run app/ui/streamlit_app.py
 ```
 
-Kullanım akışı:
+The demo uses `http://127.0.0.1:8000` by default. Set the `PNEUMONIA_API_URL`
+environment variable for another address. `.env.example` documents the variables;
+the application does not automatically load `.env` files.
 
-1. API ve Streamlit süreçlerini başlat.
-2. Streamlit ekranında JPEG, JPG veya PNG röntgen görüntüsü yükle.
-3. Görüntü önizlemesini kontrol et.
-4. `Tahmin Et` düğmesine bas.
-5. Tahmin sonucunu, olasılıkları ve güven skorunu görüntüle.
+## Data preparation, evaluation, and limitations
 
-## Rapor ve Sunum
+- **Group and duplicate audit:** Filename-derived patient groups, file/pixel
+  hashes, and detected near duplicates are assigned together. Audited train/val/test
+  intersections are zero. Filenames are not verified patient identities, so
+  the project does not claim absolute freedom from leakage.
+- **Validation selection:** Training uses only train/val manifests;
+  the model and decision threshold are saved before test evaluation.
+- **Test history:** The Kermany test was observed in earlier experiments.
+  Repeated evaluations do not replace an independent final test.
+- **Source shift:** Reliability has not been established across hospitals,
+  age distributions, or label definitions. Model probabilities are not clinical risk.
 
-Proje raporu ve sunum planı `docs` klasöründe
-hazırlanmıştır:
+Method and audit details are in the [short report](docs/project_report.md)
+and [training protocol](docs/clean_training_protocol.md).
 
-- Rapor: `docs/project_report.md`
-- Sunum planı: `docs/presentation_outline.md`
+## Experiments and development
 
-Rapor proje içinde gerçekten üretilen metrik dosyalarındaki değerlere dayanır.
-Ana kaynak dosyalar:
+The selected model after data auditing and retraining is compared below with
+the original model on the same historical 624-image test. The original model
+uses its recorded **0.70** threshold; the current model uses its validation threshold.
 
-- `reports/metrics/dataset_summary.json`
-- `reports/metrics/eda_summary.json`
-- `reports/metrics/baseline_history.json`
-- `reports/metrics/transfer_learning_history.json`
-- `reports/metrics/test_metrics.json`
-- `docs/gradcam_summary.md`
+| Metric | Original model | Current model |
+|---|---:|---:|
+| Accuracy | 88.30% | 89.58% |
+| Precision | 84.68% | 86.03% |
+| Recall | 99.23% | 99.49% |
+| F1 | 91.38% | 92.27% |
+| ROC-AUC | 95.99% | 97.92% |
 
-## Uyarı
+False positives **70 → 63**, false negatives **3 → 2**. The improvement is modest;
+this comparison is not independent external validation.
 
-Bu proje tıbbi teşhis amacıyla kullanılmaz. Üretilen tahminler yalnızca eğitim, araştırma ve akademik proje bağlamında değerlendirilmelidir. Klinik kararlar için uzman hekim değerlendirmesi gereklidir.
+![Original and current models on the same historical 624-image test](docs/figures/clean_v3_matched98_results_comparison.png)
+
+Additional experiments with NIH data, MIMIC-pretrained features, and RSNA
+opacity data did not produce a strong improvement suitable for replacing the
+main model. A separate SSMU model achieved **86.36% F1** on its own test, but
+only **2.82% F1** with **1,505 false positives** on the external OpenI check.
+Patient identities and clinical labels are unverified; this candidate did not
+replace the main model. Scores from different source test sets are not directly comparable.
+
+- [Main comparison and confidence intervals](docs/clean_v3_matched98_results.md)
+- [Record of successful and unsuccessful experiments](docs/experiment_ledger.md)
+- [SSMU model and OpenI results](docs/ssmu_model_results.md)
+- [All protocols and dataset research](docs/README.md)
+
+## Development and repository layout
+
+```powershell
+python -m ruff check .
+python -m pytest
+```
+
+With Make available, the equivalent main workflow is `make prepare`, `make train`,
+`make select`, and `make evaluate`. Change `RUN_DIR` and `SELECTED_DIR` for new
+experiments. `make evaluate-legacy` is the historical plotting/reporting tool
+using the model in config; the main selection workflow is documented above.
+
+| Location | Purpose |
+|---|---|
+| `src/data/`, `src/training/`, `src/evaluation/` | Preparation, training, threshold/model selection |
+| `src/inference/`, `app/api/`, `app/ui/` | Checkpoint inference and demo |
+| `configs/config.yaml` | Data and default prediction paths; main training parameters are CLI options |
+| `docs/` | Current report, acquisition guide, and historical experiment index |
+| `tests/` | Group/duplicate separation, threshold selection, training, and inference checks |
+| `data/`, `models/`, `reports/` | Local data and outputs, excluded from Git |
+
+## License and attribution
+
+Project code is licensed under [MIT](LICENSE). Datasets, third-party pretrained
+weights, and derived checkpoints have separate terms; the repository license
+does not relicense them under MIT. Sources and citations are in the
+[data and weights guide](docs/data_and_weights.md).

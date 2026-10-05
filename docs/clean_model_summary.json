@@ -1,0 +1,168 @@
+{
+  "model": "resnet18_clahe",
+  "checkpoint": "models/clean_v3/selected_matched98/best_model.pt",
+  "checkpoint_sha256": "da5c58d36865cc01d8df1dce5c358dac2a06b0b0b4981115bb7e35d806e2be9b",
+  "selection_policy": {
+    "recorded_at_utc": "2026-09-15 21:22:09 UTC",
+    "third_experiment_test_report_existed_at_registration": false,
+    "primary_minimum_validation_recall": 0.98,
+    "sensitivity_minimum_validation_recall": 0.99,
+    "primary_selection": "maximum validation specificity at recall >= 0.98; break ties by validation F1",
+    "justification": "The existing deployed baseline's documented threshold was selected with validation recall above 0.98 (docs/evaluation_summary.md lines 16-18). Previous clean experiments used a stricter 0.99 constraint, so the primary v3 comparison matches the historical baseline policy.",
+    "candidates": [
+      "models/clean_v3/xrv_clahe_finetuned",
+      "models/clean_v3/resnet18_clahe"
+    ],
+    "reporting": "Report both policies regardless of which has better legacy-test results. Use the 0.98 policy as primary; never choose a threshold by legacy-test optimization.",
+    "prior_test_exposure": "The original benchmark and clean_v1/clean_v2 legacy-test outcomes have been inspected. Neither v3 operating policy is claimed to produce untouched external validation."
+  },
+  "comparison": {
+    "previous_threshold": 0.7,
+    "previous": {
+      "threshold": 0.7,
+      "sample_count": 624,
+      "accuracy": 0.8830128205128205,
+      "balanced_accuracy": 0.8465811965811966,
+      "precision": 0.8468271334792122,
+      "recall": 0.9923076923076923,
+      "specificity": 0.7008547008547008,
+      "f1": 0.9138134592680047,
+      "roc_auc": 0.9599441157133465,
+      "average_precision": 0.965083738129888,
+      "confusion_matrix": [
+        [
+          164,
+          70
+        ],
+        [
+          3,
+          387
+        ]
+      ]
+    },
+    "new": {
+      "threshold": 0.8820025324821472,
+      "sample_count": 624,
+      "accuracy": 0.8958333333333334,
+      "balanced_accuracy": 0.8628205128205129,
+      "precision": 0.8603104212860311,
+      "recall": 0.9948717948717949,
+      "specificity": 0.7307692307692307,
+      "f1": 0.9227110582639715,
+      "roc_auc": 0.9791968003506465,
+      "average_precision": 0.9833371448165631,
+      "confusion_matrix": [
+        [
+          171,
+          63
+        ],
+        [
+          2,
+          388
+        ]
+      ]
+    },
+    "delta_percentage_points": {
+      "accuracy": 1.2820512820512886,
+      "precision": 1.3483287806818844,
+      "recall": 0.2564102564102555,
+      "specificity": 2.991452991452992,
+      "f1": 0.889759899596676,
+      "roc_auc": 1.925268463730001
+    }
+  },
+  "confidence_intervals_95": {
+    "accuracy": [
+      0.869345091470424,
+      0.920134154779105
+    ],
+    "precision": [
+      0.8219476517903477,
+      0.8942970982505867
+    ],
+    "recall": [
+      0.9861868887834591,
+      1.0
+    ],
+    "specificity": [
+      0.6666666666666666,
+      0.783904371686702
+    ],
+    "f1": [
+      0.9002593738792202,
+      0.9421396072796935
+    ],
+    "roc_auc": [
+      0.9676034615109967,
+      0.9884628107787847
+    ]
+  },
+  "split_counts": {
+    "train": {
+      "images": 3802,
+      "labels": {
+        "NORMAL": 1078,
+        "PNEUMONIA": 2724
+      },
+      "groups": 2153
+    },
+    "val": {
+      "images": 951,
+      "labels": {
+        "NORMAL": 270,
+        "PNEUMONIA": 681
+      },
+      "groups": 538
+    },
+    "test": {
+      "images": 624,
+      "labels": {
+        "NORMAL": 234,
+        "PNEUMONIA": 390
+      },
+      "groups": 426
+    },
+    "excluded": {
+      "images": 479,
+      "labels": {
+        "NORMAL": 1,
+        "PNEUMONIA": 478
+      },
+      "groups": 188
+    }
+  },
+  "overlaps": {
+    "train/val": {
+      "patient_proxy": 0,
+      "sha256": 0,
+      "pixel_sha256": 0,
+      "connected_components": 0
+    },
+    "train/test": {
+      "patient_proxy": 0,
+      "sha256": 0,
+      "pixel_sha256": 0,
+      "connected_components": 0
+    },
+    "val/test": {
+      "patient_proxy": 0,
+      "sha256": 0,
+      "pixel_sha256": 0,
+      "connected_components": 0
+    }
+  },
+  "cross_split_near_duplicates": 0,
+  "manifest_sha256": {
+    "train": "4fd921455bfe5b372b0a63022f3c72c8ca1f48a8b30d2c98761c830abea92c9a",
+    "val": "b5f7363bddf2fe0b7ee872a286651dbd4994f58a0784941c98df73fa86170ed0",
+    "test": "fc42a926f1731c81ba976e501d285d5caeb116c68e4d5eef8a6ca8d2d97b0c75",
+    "excluded": "3905bc9da48e065329896a4e80899af736ed8c1ad8da56b7789840744144d17b"
+  },
+  "limitations": [
+    "Filename groups are conservative proxies, not verified patient IDs.",
+    "Near-duplicate screening cannot prove absence of all acquisition overlap.",
+    "Original test was inspected historically; it is a legacy benchmark."
+  ],
+  "benchmark_status": "Previously inspected legacy benchmark; not untouched external validation.",
+  "conclusion": "All reported point estimates improved; accuracy and F1 gains are modest. Large improvement and external generalization are not established."
+}

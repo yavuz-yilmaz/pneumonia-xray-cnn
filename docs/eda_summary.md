@@ -1,42 +1,42 @@
-# EDA Özeti
+# EDA Summary
 
-Bu doküman `python -m src.eda.run_eda --config configs/config.yaml` komutu ile otomatik oluşturulmuştur.
+This document was automatically generated with `python -m src.eda.run_eda --config configs/config.yaml`.
 
-## Veri Seti Özeti
+## Dataset Summary
 
-- Okunabilir görüntü sayısı: 5856
-- Okunamayan görüntü sayısı: 0
+- Readable image count: 5856
+- Unreadable image count: 0
 
-## Sınıf Dağılımı
+## Class Distribution
 
-| Split | NORMAL | PNEUMONIA | Toplam |
+| Split | NORMAL | PNEUMONIA | Total |
 | --- | ---: | ---: | ---: |
 | train | 1341 | 3875 | 5216 |
 | val | 8 | 8 | 16 |
 | test | 234 | 390 | 624 |
 
-## Sayısal Özet
+## Numerical Summary
 
-- Çoğunluk/azınlık sınıf oranı: 2.699
-- Ortalama genişlik: 1327.881 piksel
-- Ortalama yükseklik: 970.689 piksel
-- Ortalama aspect ratio: 1.443
-- Ortalama piksel yoğunluğu: 122.786
+- Majority/minority class ratio: 2.699
+- Mean width: 1327.881 pixels
+- Mean height: 970.689 pixels
+- Mean aspect ratio: 1.443
+- Mean pixel intensity: 122.786
 
-## Gözlenen Olası Problemler
+## Potential Issues
 
-- Sınıf dağılımı dengesiz görünüyor; eğitimde class weight veya sampler kullanılması önerilir.
-- Aspect ratio dağılımı geniş; resize işleminde oran bozulmasının etkisi izlenmeli.
-- EDA sırasında okunamayan görüntüyle karşılaşılmadı.
+- The class distribution appears imbalanced; consider class weights or a sampler during training.
+- Aspect ratios vary widely; monitor distortion introduced by resizing.
+- No unreadable images were found during EDA.
 
-## Modelleme İçin Öneriler
+## Modeling Recommendations
 
-- PNEUMONIA ve NORMAL sınıfları arasındaki dengesizlik için weighted loss veya WeightedRandomSampler denenmelidir.
-- Görüntüler sabit boyuta getirilirken eğitim ve inference aşamalarında aynı normalizasyon kullanılmalıdır.
-- Tıbbi anlamı bozabilecek agresif augmentasyonlardan kaçınılmalıdır.
-- Model seçiminde accuracy ile birlikte recall, precision, F1-score ve confusion matrix mutlaka raporlanmalıdır.
+- To address the imbalance between PNEUMONIA and NORMAL, try weighted loss or WeightedRandomSampler.
+- When resizing images to a fixed size, use the same normalization for training and inference.
+- Avoid aggressive augmentations that could alter medically meaningful features.
+- During model selection, report recall, precision, F1-score, and the confusion matrix alongside accuracy.
 
-## Üretilen Görseller
+## Generated Figures
 
 - `reports/figures/eda_class_distribution.png`
 - `reports/figures/eda_sample_grid_NORMAL.png`
