@@ -220,9 +220,18 @@ only **2.82% F1** with **1,505 false positives** on the external OpenI check.
 Patient identities and clinical labels are unverified; this candidate did not
 replace the main model. Scores from different source test sets are not directly comparable.
 
+The separate **DINOv3 ViT-L/16 research experiment** also did not replace the
+main model. At its unchanged validation threshold, it classified **54 of 78**
+previously unused Montgomery normal images as pneumonia (specificity **30.77%**).
+This normal-only check does not measure pneumonia sensitivity or full binary
+performance. DINOv3 is not integrated into the API or demo; the training and
+evaluation workflow is preserved for research and reproducibility only.
+
 - [Main comparison and confidence intervals](docs/clean_v3_matched98_results.md)
 - [Record of successful and unsuccessful experiments](docs/experiment_ledger.md)
 - [SSMU model and OpenI results](docs/ssmu_model_results.md)
+- [DINOv3 external source check and limitations](docs/dinov3_external_results.md)
+- [DINOv3 Modal experiment and reproduction guide](docs/modal_dinov3.md)
 - [All protocols and dataset research](docs/README.md)
 
 ## Development and repository layout

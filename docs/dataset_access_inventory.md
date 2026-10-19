@@ -1,4 +1,13 @@
-# Dataset access inventory — rechecked 2026-10-02
+# Dataset access inventory — status through 2026-10-07
+
+## DINOv3 external audit update — 2026-10-07
+
+All 50 frontal files acquired from SSMU 2026 part 1 are byte-identical to
+previously acquired SSMU images and were excluded. A new Montgomery normal-only
+cohort was scored: 78 retained images, 54 false alarms. RSUA cloud delivery
+returned HTTP 403. There is no independent pneumonia sensitivity result.
+See the [external report](dinov3_external_results.md); dated acquisition
+statements below describe their earlier snapshots.
 
 ## Revised scope
 

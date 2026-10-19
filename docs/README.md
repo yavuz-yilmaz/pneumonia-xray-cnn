@@ -22,6 +22,18 @@ Start with the first three guides below; the other files preserve completed expe
 | [v4](clean_v4_results.md), [v5](clean_v5_results.md), [v6](clean_v6_results.md), [v7](clean_v7_results.md) | Later candidates that did not replace the main model |
 | [v5 protocol](clean_v5_protocol.md), [RSNA pretraining protocol](rsna_pretraining_protocol.md) | Ensemble and opacity pretraining experiments |
 
+## DINOv3 research-only experiment
+
+This candidate was trained on Kermany development data and was not integrated
+into the API or demo. Its normal-only external check showed poor transfer; no
+independent pneumonia sensitivity was measured.
+
+- [External results and limitations](dinov3_external_results.md), with
+  [aggregate machine-readable results](dinov3_external_results.json).
+- [Modal training, budget controls, and reproduction guide](modal_dinov3.md).
+- [Model recovery roadmap](model_recovery_plan_20261008.md), a historical
+  planning note written in Turkish on 2026-10-08.
+
 ## Additional sources: NIH / MIMIC / OpenI
 
 - [Access inventory](dataset_access_inventory.md): the opening status summary is current;

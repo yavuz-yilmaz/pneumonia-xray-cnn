@@ -1,0 +1,56 @@
+{
+  "date": "2026-10-07",
+  "external_id": "e68748b9776e1628",
+  "job_id": "1b73b1facc83fda1",
+  "checkpoint_sha256": "7b67f3404c97de505e38eeedbb062d066980044108e59e0c45e2b1ed7d8ff1cd",
+  "decision_threshold": 0.6127732396125793,
+  "evaluated_source": "Montgomery County normal controls, NLM official original PNGs",
+  "downloaded_controls": 80,
+  "conservative_near_overlap_exclusions": 2,
+  "evaluated_controls": 78,
+  "true_negatives": 24,
+  "false_positives": 54,
+  "specificity": 0.3076923076923077,
+  "specificity_wilson95": [
+    0.21631928555607347,
+    0.4171183335640013
+  ],
+  "false_positive_rate": 0.6923076923076923,
+  "false_positive_rate_wilson95": [
+    0.5828816664359987,
+    0.7836807144439265
+  ],
+  "pneumonia_sensitivity": null,
+  "binary_accuracy": null,
+  "auc": null,
+  "ssmu2026_part1": {
+    "frontal_downloaded": 50,
+    "byte_identical_to_previous_ssmu": 50,
+    "evaluated": 0
+  },
+  "rsua": {
+    "status": "not_evaluated",
+    "reason": "publisher cloud download returned HTTP403"
+  },
+  "no_model_or_threshold_tuning": true,
+  "normal_png_modes": {
+    "L": 78
+  },
+  "validation_false_positive_rate": 0.022222222222222223,
+  "external_prepare_seconds": 31.140822675,
+  "external_inference_stage_seconds": 107.83627473,
+  "gpu": "NVIDIA L4",
+  "external_worst_case_reservations_usd": 0.386,
+  "cumulative_reservations_usd": 23.9713,
+  "remaining_stage_allowance_usd": 0.0287,
+  "held_reserve_usd": 4.0,
+  "invoice_note": "Reservations are estimates, not actual charges or an invoice cap",
+  "verification": "Counts and Wilson intervals independently recomputed from individual predictions; exact SSMU overlap independently joined to prior byte hashes",
+  "clinical_limitations": "Normal-only retrospective source check; no independent pneumonia sensitivity, overall accuracy or clinical validation established",
+  "evidence_sha256": {
+    "predictions.json": "1af40093ff05724f1278c4d345fc80eeeea3fab9228beb264e125ed7ae2f136e",
+    "locked_inference.json": "3c8af43bff75e86c3b6b6940299afa27de9e0ca005cb4f616f048943152db1dc",
+    "protocol_amendment.json": "7cf4a2fbb4feb6dba5ff1937605c3f14b9562a6489aec79e08d4b7483ceeaa83",
+    "ssmu_overlap.json": "34f9edbcfec142bad09e54a3c86fa17bd6ede34919a4474d7de62ab54f890c0f"
+  }
+}

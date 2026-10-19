@@ -258,3 +258,22 @@ The ORCID matches both pinned SSMU dataset publisher records (2021 and 2026).
 The [unsent clarification draft](ssmu_identity_questions.md) now names this
 specific recipient and the source. No message or image was transmitted;
 mailbox availability, provider response and patient grouping remain unverified.
+
+## DINOv3 frozen external source check — 2026-10-07
+
+The Kermany-only DINOv3 epoch-4 checkpoint was scored at its unchanged
+validation threshold `0.6127732396125793`. Newly acquired Montgomery normal
+controls yielded 24 true negatives and 54 false positives among 78 retained
+images: specificity 30.77%, false-positive rate 69.23%. Two additional controls
+were conservatively excluded before inference by the registered pHash rule.
+
+All 50 frontal SSMU 2026 part-1 files were byte-identical to previously acquired
+SSMU images and excluded, independently verified against prior SHA-256 hashes.
+RSUA's public archive returned HTTP 403 from the cloud. Thus independent
+pneumonia sensitivity and full binary external performance remain unmeasured.
+No model/threshold tuning or deployment replacement followed these results.
+
+External reservations total $0.3860, cumulative ledger reservations $23.9713
+against the $24 stage ceiling, with $4 still held separately. All external
+functions were inactive after completion. See the
+[report and frozen-source limitations](dinov3_external_results.md).
